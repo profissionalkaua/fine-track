@@ -1,0 +1,4 @@
+-r requirements.in
+faster-whisper
+mediapipe
+opencv-python-headless

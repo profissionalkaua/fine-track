@@ -1,8 +1,12 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="PULSO_", env_file="../.env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="PULSO_", env_file=ROOT / ".env", extra="ignore")
     environment: str = "development"
     database_url: str = "postgresql+psycopg://pulso_app:pulso-local-only@127.0.0.1:55432/pulso"
     admin_database_url: str = "postgresql+psycopg://postgres:pulso-local-only@127.0.0.1:55432/pulso"
@@ -17,8 +21,21 @@ class Settings(BaseSettings):
     ollama_model: str = ""
     vision_model: str = ""
     latest_snapshot_hours: float = 2
+    media_root: str = str(ROOT / ".runtime/media")
+    media_temp_root: str = str(ROOT / ".runtime/media-work")
+    media_max_mb: int = 100
+    media_max_seconds: int = 180
+    whisper_model_path: str = ""
+    pose_model_path: str = ""
+    telemetry_enabled: bool = False
+    retention_days: int = 90
+    classifier_model: str = ""
+    classifier_calibrated: bool = False
 
     @classmethod
     def testing(cls):
-        return cls(environment="test", database_url=cls.model_fields['database_url'].default + '_test',
-                   admin_database_url=cls.model_fields['admin_database_url'].default + '_test')
+        return cls(
+            environment="test",
+            database_url=cls.model_fields["database_url"].default + "_test",
+            admin_database_url=cls.model_fields["admin_database_url"].default + "_test",
+        )

@@ -1,0 +1,11 @@
+.git
+.venv
+node_modules
+.runtime
+.env
+.env.local
+web/.next
+test-results
+playwright-report
+.superpowers
+**/__pycache__

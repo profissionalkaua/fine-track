@@ -1,0 +1,234 @@
+name: pulso
+
+x-backend: &backend
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+  environment: &app-env
+    PULSO_ENVIRONMENT: ${PULSO_ENVIRONMENT:-development}
+    PULSO_DATABASE_URL: postgresql+psycopg://pulso_app:${PULSO_APP_ROLE_PASSWORD:?Configure PULSO_APP_ROLE_PASSWORD}@postgres:5432/pulso
+    PULSO_ORIGIN: ${PULSO_ORIGIN:-http://127.0.0.1:3000}
+    PULSO_COOKIE_SECURE: ${PULSO_COOKIE_SECURE:-false}
+    PULSO_COLLECTION_ENABLED: ${PULSO_COLLECTION_ENABLED:-false}
+    PULSO_MS_TOKEN: ${PULSO_MS_TOKEN:-}
+    PULSO_BROKER_URL: amqp://pulso:${RABBITMQ_PASSWORD:?Configure RABBITMQ_PASSWORD}@rabbitmq:5672//
+    PULSO_OLLAMA_URL: http://ollama:11434
+    PULSO_OLLAMA_MODEL: ${PULSO_OLLAMA_MODEL:-}
+    PULSO_VISION_MODEL: ${PULSO_VISION_MODEL:-}
+    PULSO_WHISPER_MODEL_PATH: ${PULSO_WHISPER_MODEL_PATH:-}
+    PULSO_POSE_MODEL_PATH: ${PULSO_POSE_MODEL_PATH:-}
+    PULSO_TELEMETRY_ENABLED: ${PULSO_TELEMETRY_ENABLED:-false}
+    OTEL_EXPORTER_OTLP_ENDPOINT: http://otel:4318
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+    rabbitmq:
+      condition: service_healthy
+  volumes:
+    - media:/app/.runtime/media
+    - media-work:/app/.runtime/media-work
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  read_only: true
+  tmpfs: [/tmp]
+  pids_limit: 256
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_DB: pulso
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD}
+    volumes: [postgres-data:/var/lib/postgresql]
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U postgres -d pulso]
+      interval: 5s
+      retries: 15
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:4-management
+    environment:
+      RABBITMQ_DEFAULT_USER: pulso
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?Configure RABBITMQ_PASSWORD}
+    volumes: [rabbitmq-data:/var/lib/rabbitmq]
+    healthcheck:
+      test: [CMD, rabbitmq-diagnostics, -q, ping]
+      interval: 10s
+      retries: 15
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      PULSO_ADMIN_DATABASE_URL: postgresql+psycopg://postgres:${POSTGRES_PASSWORD}@postgres:5432/pulso
+      PULSO_APP_ROLE_PASSWORD: ${PULSO_APP_ROLE_PASSWORD}
+    command: [python, -m, pulso.admin, migrate]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *backend
+    healthcheck:
+      test:
+        [
+          CMD,
+          python,
+          -c,
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
+        ]
+      interval: 10s
+      retries: 10
+    mem_limit: 1g
+
+  collection:
+    <<: *backend
+    command:
+      [
+        celery,
+        -A,
+        pulso.worker:celery,
+        worker,
+        --pool=solo,
+        --concurrency=1,
+        -Q,
+        collection,
+        --loglevel=INFO,
+      ]
+    mem_limit: 2g
+
+  analysis:
+    <<: *backend
+    command:
+      [
+        celery,
+        -A,
+        pulso.worker:celery,
+        worker,
+        --pool=solo,
+        --concurrency=1,
+        -Q,
+        analysis,
+        --loglevel=INFO,
+      ]
+    mem_limit: 2g
+
+  classification:
+    <<: *backend
+    command:
+      [
+        celery,
+        -A,
+        pulso.worker:celery,
+        worker,
+        --pool=solo,
+        --concurrency=1,
+        -Q,
+        classification,
+        --loglevel=INFO,
+      ]
+    mem_limit: 2g
+
+  generation:
+    <<: *backend
+    command:
+      [
+        celery,
+        -A,
+        pulso.worker:celery,
+        worker,
+        --pool=solo,
+        --concurrency=1,
+        -Q,
+        generation,
+        --loglevel=INFO,
+      ]
+    mem_limit: 2g
+
+  multimodal:
+    <<: *backend
+    command:
+      [
+        celery,
+        -A,
+        pulso.worker:celery,
+        worker,
+        --pool=solo,
+        --concurrency=1,
+        -Q,
+        multimodal,
+        --loglevel=INFO,
+      ]
+    mem_limit: 3g
+
+  scheduler:
+    <<: *backend
+    command:
+      [
+        celery,
+        -A,
+        pulso.worker:celery,
+        worker,
+        --pool=solo,
+        --concurrency=1,
+        -Q,
+        celery,
+        --beat,
+        --schedule=/tmp/celerybeat-schedule,
+        --loglevel=INFO,
+      ]
+    mem_limit: 1g
+
+  web:
+    build:
+      context: .
+      dockerfile: web/Dockerfile
+    environment:
+      PULSO_API_URL: http://api:8000
+    ports: [127.0.0.1:3000:3000]
+    depends_on:
+      api:
+        condition: service_healthy
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:0.13.0
+    profiles: [models]
+    volumes: [ollama-data:/root/.ollama]
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.7.3
+    profiles: [monitoring]
+    volumes: [./ops/prometheus.yml:/etc/prometheus/prometheus.yml:ro]
+    ports: [127.0.0.1:9090:9090]
+
+  grafana:
+    image: grafana/grafana:12.3.0
+    profiles: [monitoring]
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-change-before-use}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./ops/grafana:/etc/grafana/provisioning:ro
+    ports: [127.0.0.1:3001:3000]
+
+  otel:
+    image: otel/opentelemetry-collector:0.140.0
+    profiles: [monitoring]
+    volumes: [./ops/otel.yml:/etc/otelcol/config.yaml:ro]
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
+  media:
+  media-work:
+  ollama-data:
+  grafana-data:

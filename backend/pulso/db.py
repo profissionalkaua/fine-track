@@ -18,7 +18,7 @@ class Base(DeclarativeBase):
 
 
 def engine_for(url: str):
-    return create_engine(url, pool_pre_ping=True, pool_size=5)
+    return create_engine(url, pool_pre_ping=True, pool_size=5, connect_args={"options": "-c timezone=UTC"})
 
 
 def session_for(engine):
