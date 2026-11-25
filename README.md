@@ -19,6 +19,8 @@ Tipos aceitos: `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`
 
 Execute `npm run lint:commits` para validar o histórico local. O workflow **Conventional Commits** valida os commits de pushes e pull requests no GitHub. O instalador ignora hooks em CI, produção e builds sem `.git`.
 
+O commit inicial de licença do GitHub (`bf38316`) foi preservado como marco em `.commitlint-baseline`. A validação do histórico considera os commits posteriores a esse marco; o hook continua exigindo o padrão em cada novo commit.
+
 ## Executar no Windows
 
 Pré-requisitos: Python 3.12 e Node 22. O projeto instala uma versão Node 22 compatível localmente para os subprocessos do Next.
