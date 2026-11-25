@@ -101,6 +101,23 @@ jobs:
         run: |
           docker compose run --rm --no-deps -T -e PULSO_SMOKE_PASSWORD migrate python -c 'import os; from pulso.admin import provision; from pulso.config import Settings; provision(Settings(), "smoke@pulso.local", os.environ["PULSO_SMOKE_PASSWORD"], "CI smoke")'
           python3 scripts/smoke-stack.py
+      - name: Recover durable queued job after worker and broker crashes
+        run: |
+          docker compose kill --signal SIGKILL analysis
+          run_id=$(python3 scripts/smoke-stack.py --submit-only)
+          queued=false
+          for attempt in $(seq 1 20); do
+            if docker compose exec -T rabbitmq rabbitmqctl list_queues --quiet name messages_ready | awk '$1 == "analysis" && $2 > 0 { found=1 } END { exit !found }'; then
+              queued=true
+              break
+            fi
+            sleep 2
+          done
+          test "$queued" = true
+          docker compose kill --signal SIGKILL rabbitmq
+          docker compose up --detach --wait --wait-timeout 180 rabbitmq
+          docker compose up --detach analysis
+          python3 scripts/smoke-stack.py --run-id "$run_id"
       - name: Verify worker and broker restart
         run: |
           docker compose exec -T scheduler celery -A pulso.worker:celery inspect ping --timeout 15

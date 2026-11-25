@@ -1,5 +1,6 @@
 """Check HTTP -> durable outbox -> RabbitMQ -> worker without models or live collection."""
 
+import argparse
 import http.cookiejar
 import json
 import os
@@ -8,6 +9,10 @@ import urllib.request
 import uuid
 
 base = "http://127.0.0.1:3000/api"
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--submit-only", action="store_true")
+parser.add_argument("--run-id")
+args = parser.parse_args()
 opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
 
 
@@ -23,10 +28,13 @@ def request(path, body=None, headers=None):
 identity = request(
     "/v1/auth/login", {"email": "smoke@pulso.local", "password": os.environ["PULSO_SMOKE_PASSWORD"]}
 )
-run = request(
+run = {"id": args.run_id} if args.run_id else request(
     "/v1/runs", {"scope": "feed"},
     {"X-CSRF-Token": identity["csrf_token"], "Idempotency-Key": str(uuid.uuid4())},
 )
+if args.submit_only:
+    print(run["id"])
+    raise SystemExit(0)
 deadline = time.monotonic() + 90
 while time.monotonic() < deadline:
     result = request(f"/v1/runs/{run['id']}")

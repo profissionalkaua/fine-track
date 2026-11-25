@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -20,6 +21,7 @@ class Settings(BaseSettings):
     ollama_url: str = "http://127.0.0.1:11434"
     ollama_model: str = ""
     vision_model: str = ""
+    vision_max_frames: int = Field(default=4, ge=1, le=16)
     latest_snapshot_hours: float = 2
     media_root: str = str(ROOT / ".runtime/media")
     media_temp_root: str = str(ROOT / ".runtime/media-work")
@@ -27,6 +29,8 @@ class Settings(BaseSettings):
     media_max_seconds: int = 180
     whisper_model_path: str = ""
     pose_model_path: str = ""
+    ocr_executable: str = ""
+    ocr_languages: str = "por+eng"
     telemetry_enabled: bool = False
     retention_days: int = 90
     classifier_model: str = ""
@@ -44,4 +48,5 @@ class Settings(BaseSettings):
             classifier_model="",
             whisper_model_path="",
             pose_model_path="",
+            ocr_executable="",
         )

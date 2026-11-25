@@ -26,7 +26,25 @@ $env:PULSO_TEST_WHISPER_PATH = (Resolve-Path .runtime/models/faster-whisper-tiny
 .venv\Scripts\python.exe -m pytest -c backend/pyproject.toml backend/tests/test_media.py -q -k offline
 ```
 
-O teste usa silêncio sintético; não mede precisão de transcrição de fala. Visão, postura e OCR continuam opcionais e indisponíveis quando não configurados. O lock de transcrição é adicional ao backend; o Dockerfile padrão não o instala nem incorpora pesos.
+O teste usa silêncio sintético; não mede precisão de transcrição de fala. O lock de transcrição é adicional ao backend; o Dockerfile padrão não o instala nem incorpora pesos.
+
+### OCR e postura configurados localmente
+
+`backend/requirements-media.txt` adiciona MediaPipe `0.10.35`, OpenCV Contrib `4.14.0.94` e dependências com hashes, preservando o lock da transcrição. Não instalar simultaneamente `opencv-python-headless`: as distribuições compartilham `cv2`.
+
+O OCR foi extraído, sem executar o instalador, em `.runtime/tesseract`. Distribuição UB Mannheim indicada pela documentação Tesseract, SHA256 do instalador conferido contra winget: `c885fff6998e0608ba4bb8ab51436e1c6775c2bafc2559a19b423e18678b60c9`. Pesos portugueses `tessdata_fast/4.1.0/por.traineddata`, SHA256 `c4932b937207a9514b7514d518b931a99938c02a28a5a5a553f8599ed58b7deb`. O `.env` define `PULSO_OCR_EXECUTABLE` com o caminho absoluto do executável e `PULSO_OCR_LANGUAGES=por+eng`. Nenhum PATH global foi alterado.
+
+Pose Lite: [bundle oficial Google, versão 1](https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task), licença Apache-2.0, SHA256 `59929e1d1ee95287735ddd833b19cf4ac46d29bc7afddbbf6753c459690d574a`. Arquivo local `.runtime/models/pose/pose_landmarker_lite.task`; `PULSO_POSE_MODEL_PATH` aponta para seu caminho absoluto. A carga por buffer evita perda de acentos em caminhos Windows. Resultado informa quantos quadros foram realmente decodificados.
+
+Testes opcionais adicionais usam `PULSO_TEST_TESSERACT_PATH` e `PULSO_TEST_POSE_PATH` com esses caminhos absolutos. O OCR reconheceu um título conhecido e conservou timestamp. A postura processou oito quadros negativos sem pessoas e oito positivos com uma pessoa no [exemplo público do MediaPipe](https://storage.googleapis.com/mediapipe-assets/pose.jpg). Não são uma avaliação ampla de precisão. Binários, amostras, pesos e relatórios permanecem em `.runtime/`, fora do Git.
+
+Qwen3-VL `2b` está instalado como candidato de visão Apache-2.0. Acertou o quadro isolado, mas a análise temporal ultrapassou o timeout CPU mesmo com dois quadros. `PULSO_VISION_MODEL` continua vazio. `PULSO_VISION_MAX_FRAMES` limita amostragem uniforme incluindo extremos; `vision_frame_timestamps_ms` registra quais quadros foram enviados. A inferência tem contexto/saída limitados e retorna parcial quando falha. Não habilite o candidato como qualidade aprovada com base no teste de um quadro.
+
+### Observação longitudinal
+
+`scripts/observe-pilot.py` lê rankings e métricas agregadas, sem gravar no banco nem solicitar novas coletas. Uma observação por hora, por até 168 horas, foi iniciada em processo oculto. PID e logs: `.runtime/pilot/observer.pid`, `observer.log`, `observer-error.log`; amostras em `samples.jsonl` e métricas em arquivos `.prom`. Para encerrar, identifique o processo do script antes de terminá-lo; o PID salvo pode referir-se ao launcher Windows.
+
+Para reproduzir uma amostra: `.venv\Scripts\python.exe scripts/observe-pilot.py --once`. Para acompanhar sete dias: remova `--once`; BR/PT e três períodos são o padrão, e `--country BR --category culinária` permite escolher outro recorte. Use uma única instância por diretório de saída. A máquina e PostgreSQL/API precisam permanecer ativos. O script relê a configuração em cada ciclo e distingue pré-verificação com fonte desativada; ignora exemplos sintéticos para a cobertura real e nunca aprova aceitação automaticamente. A primeira amostra registrou zero elegíveis reais. Persistir esses diagnósticos não substitui fonte funcional, sete dias consecutivos, p95 calculado com amostra suficiente e revisão humana de país/categoria.
 
 ## Integração contínua
 
@@ -34,7 +52,7 @@ O teste usa silêncio sintético; não mede precisão de transcrição de fala. 
 
 Outro job sobe o Compose com credenciais efêmeras, cria um workspace isolado e verifica HTTP → outbox → RabbitMQ → análise. Repete o consumo após reiniciar broker e workers e consulta explicitamente análise e geração. Não testa geração por modelo nem queda durante uma inferência. Credenciais administrativas ficam no serviço de migração; o workspace de smoke não recebe dados reais. Nenhum segredo ou modelo é necessário no GitHub. O job usa um projeto Compose efêmero e remove apenas seus próprios volumes ao terminar.
 
-Esta máquina não tem Docker nem WSL instalado. O job de containers foi preparado para o runner Linux e ainda precisa de execução no GitHub; o restante da suíte foi executado localmente.
+Esta máquina não tem Docker nem WSL instalado. A [CI do commit cad09c0](https://github.com/profissionalkaua/fine-track/actions/runs/45691972799) passou em aplicação e containers no runner Linux, incluindo subida completa e reinício com consumo posterior. A CI ampliada adiciona um job pendente durante encerramento forçado de worker e broker e verifica sua conclusão após recuperar os processos. Esse cenário não comprova retomada no meio de uma inferência.
 
 ## Processos e filas
 

@@ -30,8 +30,11 @@ def analyze_authorized(app, workspace_id, reference):
                     media.media_hash,
                     analyzer.version,
                     app.state.settings.vision_model,
+                    app.state.settings.vision_max_frames,
                     app.state.settings.whisper_model_path,
                     app.state.settings.pose_model_path,
+                    app.state.settings.ocr_executable,
+                    app.state.settings.ocr_languages,
                 ]
             ).encode()
         ).hexdigest()

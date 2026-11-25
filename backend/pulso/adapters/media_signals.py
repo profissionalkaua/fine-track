@@ -30,15 +30,15 @@ def transcribe(path: Path, model_path: str):
         return {"state": "unavailable", "reason": "Transcrição indisponível neste ambiente.", "segments": []}
 
 
-def extract_text(frames):
-    executable = shutil.which("tesseract")
+def extract_text(frames, executable="", language="por+eng"):
+    executable = executable or shutil.which("tesseract")
     if not executable:
         return {"state": "unavailable", "reason": "OCR local não instalado.", "segments": []}
     segments = []
     for frame in frames:
         try:
             result = subprocess.run(
-                [executable, str(frame["path"]), "stdout", "--psm", "11"],
+                [executable, str(frame["path"]), "stdout", "-l", language, "--psm", "11"],
                 capture_output=True,
                 timeout=20,
                 check=True,
@@ -63,11 +63,13 @@ def estimate_pose(path: Path, model_path: str, duration_ms: int):
         from mediapipe.tasks.python import vision
 
         options = vision.PoseLandmarkerOptions(
-            base_options=python.BaseOptions(model_asset_path=model_path),
+            # Native model path loading on Windows loses non-ASCII user/directory names.
+            base_options=python.BaseOptions(model_asset_buffer=Path(model_path).read_bytes()),
             running_mode=vision.RunningMode.VIDEO,
             num_poses=4,
         )
         segments = []
+        sampled_frames = 0
         capture = cv2.VideoCapture(str(path))
         try:
             with vision.PoseLandmarker.create_from_options(options) as detector:
@@ -77,6 +79,7 @@ def estimate_pose(path: Path, model_path: str, duration_ms: int):
                     ok, frame = capture.read()
                     if not ok:
                         break
+                    sampled_frames += 1
                     image = mp.Image(
                         image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                     )
@@ -106,6 +109,11 @@ def estimate_pose(path: Path, model_path: str, duration_ms: int):
                     previous = pose
         finally:
             capture.release()
-        return {"state": "completed", "model": Path(model_path).name, "segments": segments}
+        if not sampled_frames:
+            return {"state": "unavailable", "reason": "Nenhum quadro pôde ser decodificado.", "segments": []}
+        return {
+            "state": "completed", "model": Path(model_path).name,
+            "sampled_frames": sampled_frames, "segments": segments,
+        }
     except (ImportError, RuntimeError, ValueError, OSError):
         return {"state": "unavailable", "reason": "Análise de postura indisponível.", "segments": []}

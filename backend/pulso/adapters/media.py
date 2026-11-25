@@ -143,12 +143,21 @@ class MediaAnalyzer:
                 "cuts_ms": cut_times,
                 "segments": [],
                 "transcription": transcribe(local, self.settings.whisper_model_path),
-                "ocr": extract_text(frames),
+                "ocr": extract_text(
+                    frames, executable=self.settings.ocr_executable, language=self.settings.ocr_languages
+                ),
                 "pose": estimate_pose(local, self.settings.pose_model_path, duration_ms),
             }
             if self.settings.vision_model and frames:
+                limit = self.settings.vision_max_frames
+                selected = frames if len(frames) <= limit else (
+                    frames[:1] if limit == 1 else [
+                        frames[round(i * (len(frames) - 1) / (limit - 1))] for i in range(limit)
+                    ]
+                )
+                result["vision_frame_timestamps_ms"] = [frame["timestamp_ms"] for frame in selected]
                 try:
-                    output = self.describe(frames, caption, duration_ms, result["pose"], result["ocr"])
+                    output = self.describe(selected, caption, duration_ms, result["pose"], result["ocr"])
                     for segment in output.segments:
                         if segment.end_ms > duration_ms or segment.start_ms >= segment.end_ms:
                             raise ValueError("Intervalo visual inválido.")
@@ -180,6 +189,7 @@ class MediaAnalyzer:
                 json={
                     "model": self.settings.vision_model,
                     "stream": False,
+                    "think": False,
                     "format": VisualOutput.model_json_schema(),
                     "messages": [
                         {
@@ -196,7 +206,7 @@ class MediaAnalyzer:
                             "images": [base64.b64encode(f["path"].read_bytes()).decode() for f in frames],
                         },
                     ],
-                    "options": {"temperature": 0},
+                    "options": {"temperature": 0, "num_ctx": 8192, "num_predict": 2048},
                 },
             )
             response.raise_for_status()
