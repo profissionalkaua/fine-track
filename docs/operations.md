@@ -2,11 +2,11 @@
 
 ## Modelos locais nesta máquina
 
-Ollama portátil `0.40.18` está em `.runtime/ollama`, escutando somente em `127.0.0.1:11434`. Inicie novamente com `powershell -File scripts/ollama-local.ps1`. O launcher desativa a nuvem e limita a um modelo carregado e uma inferência simultânea. Não instala serviço nem altera drivers. O driver AMD disponível não foi aceito pelo runtime; a verificação usou CPU.
+Ollama portátil `0.40.18` está em `.runtime/ollama`, escutando somente em `127.0.0.1:11434`. Inicie novamente com `powershell -File scripts/ollama-local.ps1`. O launcher desativa a nuvem e limita a um modelo carregado e uma inferência simultânea. Não instala serviço nem altera drivers. ROCm não aceitou o driver AMD; o backend Vulkan da própria distribuição reconheceu a RX 6600 com 8 GB de VRAM. Medições iniciais usaram CPU; as avaliações finais dos modelos 4B usaram Vulkan na GPU.
 
-A distribuição vem do [release oficial](https://github.com/ollama/ollama/releases/tag/v0.40.18). O ZIP Windows teve SHA256 conferido contra `sha256sum.txt`: `ca97292ac1e9acc77fcf473bb2741fa6acd12e3798f261b419680068b7cc4c16`. Foram extraídos somente o executável, bibliotecas CPU e licenças, evitando as bibliotecas GPU. Os binários e pesos são ignorados pelo Git.
+A distribuição vem do [release oficial](https://github.com/ollama/ollama/releases/tag/v0.40.18). O ZIP Windows teve SHA256 conferido contra `sha256sum.txt`: `ca97292ac1e9acc77fcf473bb2741fa6acd12e3798f261b419680068b7cc4c16`. Foram extraídos executável, bibliotecas CPU/Vulkan e licenças. O cache do ZIP foi removido após extração para liberar espaço. Binários e pesos são ignorados pelo Git.
 
-O `.env` local seleciona `qwen2.5:1.5b`; a distribuição de aproximadamente 986 MB possui [licença Apache 2.0 e suporte declarado a português](https://ollama.com/library/qwen2.5:1.5b). O adaptador real validou um roteiro e cinco ideias com referências existentes. Isso verifica formato e integração; não comprova qualidade editorial, resistência completa a prompt injection ou a meta de latência do piloto. Não altere `PULSO_CLASSIFIER_CALIBRATED=false` sem calibração humana.
+O `.env` local seleciona `qwen3:4b-instruct` para texto e `qwen3-vl:4b-instruct` para visão, ambos Apache-2.0, em avaliação do piloto. O `qwen2.5:1.5b` anterior continua instalado como alternativa leve. O adaptador real validou formatos e referências, mas o ensaio editorial revelou que respostas válidas ainda podem descumprir uma restrição alimentar do briefing. Isso não comprova qualidade editorial, resistência completa a prompt injection ou a meta de latência do piloto. Não altere `PULSO_CLASSIFIER_CALIBRATED=false` sem calibração humana.
 
 Digest instalado: `65ec06548149b04c096a120e4a6da9d4017ea809c91734ea5631e89f96ddc57b`. O launcher não baixa nem atualiza o modelo ao iniciar; confira o digest de `/api/tags` antes de avaliar outra versão.
 
@@ -38,7 +38,9 @@ Pose Lite: [bundle oficial Google, versão 1](https://storage.googleapis.com/med
 
 Testes opcionais adicionais usam `PULSO_TEST_TESSERACT_PATH` e `PULSO_TEST_POSE_PATH` com esses caminhos absolutos. O OCR reconheceu um título conhecido e conservou timestamp. A postura processou oito quadros negativos sem pessoas e oito positivos com uma pessoa no [exemplo público do MediaPipe](https://storage.googleapis.com/mediapipe-assets/pose.jpg). Não são uma avaliação ampla de precisão. Binários, amostras, pesos e relatórios permanecem em `.runtime/`, fora do Git.
 
-Qwen3-VL `2b` está instalado como candidato de visão Apache-2.0. Acertou o quadro isolado, mas a análise temporal ultrapassou o timeout CPU mesmo com dois quadros. `PULSO_VISION_MODEL` continua vazio. `PULSO_VISION_MAX_FRAMES` limita amostragem uniforme incluindo extremos; `vision_frame_timestamps_ms` registra quais quadros foram enviados. A inferência tem contexto/saída limitados e retorna parcial quando falha. Não habilite o candidato como qualidade aprovada com base no teste de um quadro.
+Os candidatos visuais Moondream/2B foram reprovados e removidos. A variante genérica Qwen3-VL `2b` apontava para um modelo de raciocínio que esgotava a saída sem JSON; o piloto selecionou explicitamente `qwen3-vl:4b-instruct`. Na GPU, o exemplo com uma pessoa na praia completou em 9,09 s e o quadro azul retornou zero pessoas, sem roupas inventadas. Isso valida somente exemplos estáticos. `PULSO_VISION_MAX_FRAMES=2` no `.env` limita amostragem uniforme incluindo extremos; `vision_frame_timestamps_ms` registra os quadros enviados. As descrições textuais são solicitadas em português; consistência de idioma e movimentos complexos ainda exigem avaliação. A inferência tem contexto/saída limitados e retorna parcial quando falha. Campos vazios não qualificam como evidência; nomes inventados são rejeitados e respostas sem sinais úteis permanecem parciais. Vídeo sem faixa de áudio preserva o restante da análise. O analisador `media-v2` invalida o cache do contrato anterior.
+
+Digests instalados: texto `0edcdef34593eac1aa2be9c7d06c432dcf81945adca5eca2f27662c18f168ba0`; visão `84f7ed8042fa7cdbd902f7dcb7d0370e032095047cc3244179f263b77b5bc318`. A análise individual completa via API/worker/FFmpeg/Whisper/OCR/postura/visão/geração/exportação completou em 46,16 s com vídeo sintético autorizado. Essa execução não estima p95.
 
 ### Observação longitudinal
 
@@ -52,7 +54,7 @@ Para reproduzir uma amostra: `.venv\Scripts\python.exe scripts/observe-pilot.py 
 
 Outro job sobe o Compose com credenciais efêmeras, cria um workspace isolado e verifica HTTP → outbox → RabbitMQ → análise. Repete o consumo após reiniciar broker e workers e consulta explicitamente análise e geração. Não testa geração por modelo nem queda durante uma inferência. Credenciais administrativas ficam no serviço de migração; o workspace de smoke não recebe dados reais. Nenhum segredo ou modelo é necessário no GitHub. O job usa um projeto Compose efêmero e remove apenas seus próprios volumes ao terminar.
 
-Esta máquina não tem Docker nem WSL instalado. A [CI do commit cad09c0](https://github.com/profissionalkaua/fine-track/actions/runs/45691972799) passou em aplicação e containers no runner Linux, incluindo subida completa e reinício com consumo posterior. A CI ampliada adiciona um job pendente durante encerramento forçado de worker e broker e verifica sua conclusão após recuperar os processos. Esse cenário não comprova retomada no meio de uma inferência.
+Esta máquina não tem Docker nem WSL instalado. A [CI do commit 02fe4b7](https://github.com/profissionalkaua/fine-track/actions/runs/45695402744) passou em aplicação e containers no runner Linux, incluindo subida completa, reinício e recuperação de mensagem pendente durante SIGKILL de worker e broker. A primeira execução ampliada havia perdido a mensagem: a publicação agora aguarda confirmação de persistência do RabbitMQ antes de marcar a outbox enviada. Esse cenário não comprova retomada no meio de uma inferência.
 
 ## Processos e filas
 
