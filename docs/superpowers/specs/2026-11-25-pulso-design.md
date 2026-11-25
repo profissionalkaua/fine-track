@@ -1,8 +1,8 @@
 # Pulso: desenho de implementação
 
-Status: proposta para aprovação. Nenhum código de produto foi implementado.
+Status: aprovado pelo usuário em 25/11/2026; implementação autorizada.
 
-Revisão de viabilidade de planejamento: revisor independente não identificou lacunas importantes pendentes. A aprovação do usuário continua pendente, inclusive das fronteiras de teste e da divisão em tickets.
+Revisão de viabilidade de planejamento: revisor independente não identificou lacunas importantes pendentes. O usuário aprovou o desenho, a divisão das entregas e as fronteiras de teste antes de autorizar o prosseguimento.
 
 ## Intenção e requisitos
 
