@@ -1,10 +1,14 @@
 import subprocess
 
 import imageio_ffmpeg
+import pytest
 from conftest import AS_OF, observation
 
 
-def test_media_result_survives_failure_of_the_text_generator(client, settings, tmp_path):
+@pytest.mark.parametrize("model_fails", [True, False])
+def test_media_result_keeps_signal_availability_when_text_generation_finishes(
+    client, settings, tmp_path, model_fails
+):
     from pulso.adapters.ollama import ModelError
     from pulso.admin import load_observations, register_media
     from pulso.jobs import drain_once
@@ -35,7 +39,11 @@ def test_media_result_survives_failure_of_the_text_generator(client, settings, t
         model_version = "test-only"
 
         def generate(self, references, rules, count):
-            raise ModelError("Modelo de texto temporariamente indisponível.")
+            from test_runs import generated
+
+            if model_fails:
+                raise ModelError("Modelo de texto temporariamente indisponível.")
+            return generated(count)
 
     client.app.state.generator = Generator()
     run_id = client.post(
@@ -45,9 +53,13 @@ def test_media_result_survives_failure_of_the_text_generator(client, settings, t
     ).json()["id"]
     drain_once(client.app)
     exported = client.get(f"/v1/runs/{run_id}/export").json()
-    assert exported["state"] == "failed"
+    assert exported["state"] == ("failed" if model_fails else "completed")
     assert exported["result"]["analise_visual"]["duration_ms"] == 2000
     assert exported["result"]["analise_visual"]["frames"][0]["timestamp_ms"] == 0
+    assert exported["result"]["unavailable_signals"] == ["retention_analytics", "audio"]
+    assert exported["result"]["signal_availability"]["9000000000000000001"] == {
+        "retention_analytics": False, "audio": False, "visual_frames": True
+    }
 
 
 def test_scheduler_observes_creators_beyond_the_first_six(client, settings):

@@ -328,6 +328,9 @@ export function Creators({
                   : order === "views"
                     ? "Ordenação por views acumuladas globais."
                     : "Publicações em ordem de data."}
+                {
+                  " Percentil por velocidade: mesma cobertura da janela, duração observada com diferença de até uma hora; empates usam a posição média."
+                }
               </p>
               {loading ? (
                 <p className="muted">Carregando vídeos…</p>

@@ -1,5 +1,10 @@
 import { defineConfig, devices } from "@playwright/test";
 
+const python =
+  process.platform === "win32"
+    ? ".venv/Scripts/python.exe"
+    : ".venv/bin/python";
+
 export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: false,
@@ -14,16 +19,15 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command:
-        ".venv\\Scripts\\python.exe -m uvicorn pulso.main:create_app --factory --app-dir backend --host 127.0.0.1 --port 8000",
+      command: `${python} -m uvicorn pulso.main:create_app --factory --app-dir backend --host 127.0.0.1 --port 8000`,
       url: "http://127.0.0.1:8000/health",
-      reuseExistingServer: true,
+      reuseExistingServer: !process.env.CI,
       timeout: 60000,
     },
     {
-      command: "npm.cmd run dev",
+      command: "node scripts/next.mjs dev",
       url: "http://127.0.0.1:3000",
-      reuseExistingServer: true,
+      reuseExistingServer: !process.env.CI,
       timeout: 120000,
     },
   ],

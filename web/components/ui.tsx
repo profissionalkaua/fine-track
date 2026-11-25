@@ -205,6 +205,13 @@ export function VideoCard({
           <span>+{metric(video.delta_views)} no período</span>
         </div>
         <Metrics video={video} />
+        {video.comparable_posts !== undefined && (
+          <p className="muted">
+            {video.relative_percentile != null
+              ? `Percentil ${video.relative_percentile.toLocaleString("pt-BR")} · ${video.comparable_posts} posts comparáveis do canal`
+              : "Percentil indisponível: exige 10 posts com janelas comparáveis."}
+          </p>
+        )}
         <div className="tags">
           {video.hashtags.slice(0, 3).map((tag) => (
             <span key={tag.key}>#{tag.label}</span>

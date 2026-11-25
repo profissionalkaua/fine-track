@@ -308,6 +308,24 @@ def transition(app, run_id, workspace_id, state, progress, **updates):
         return True
 
 
+def signal_availability(prepared):
+    signals = {
+        ref["id"]: {
+            "retention_analytics": False,
+            "audio": ref.get("analise_visual", {}).get("transcription", {}).get("state") == "completed",
+            "visual_frames": bool(ref.get("analise_visual", {}).get("frames")),
+        }
+        for ref in prepared
+    }
+    return {
+        "signal_availability": signals,
+        "unavailable_signals": [
+            name for name in ("retention_analytics", "audio", "visual_frames")
+            if not signals or any(not available[name] for available in signals.values())
+        ],
+    }
+
+
 def execute_run(app, run_id, workspace_id):
 
     if not transition(app, run_id, workspace_id, "collecting", 10):
@@ -338,7 +356,7 @@ def execute_run(app, run_id, workspace_id):
                     "message": f"Amostra insuficiente: {len(refs)} de {minimum} referências elegíveis. Aguarde a coleta e retome.",
                 }
             ],
-            result={"ideas": [], "evidence": [], "analise_visual": visual},
+            result={"ideas": [], "evidence": [], "analise_visual": visual, **signal_availability(refs)},
         )
         return
     if not transition(app, run_id, workspace_id, "analyzing", 35):
@@ -385,6 +403,7 @@ def execute_run(app, run_id, workspace_id):
                 "evidence": evidence,
                 "analise_visual": visual,
                 "visual_analyses": {reference["id"]: reference["analise_visual"] for reference in prepared},
+                **signal_availability(prepared),
             }
         enqueue(
             db,
@@ -427,7 +446,7 @@ def generate_run(app, payload, workspace_id):
         analise_visual=visual,
         visual_analyses={ref["id"]: ref["analise_visual"] for ref in prepared},
         model_version=app.state.generator.model_version,
-        unavailable_signals=["retention_analytics", "audio", "visual_frames"],
+        **signal_availability(prepared),
         methodology="Associações observadas e hipóteses editoriais; sem inferência de causalidade.",
     )
     transition(app, run_id, workspace_id, "completed", 100, result=result, processed=len(prepared))

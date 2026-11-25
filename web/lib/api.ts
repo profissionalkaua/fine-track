@@ -26,6 +26,8 @@ export type Video = {
   velocity?: number;
   delta_views?: number;
   partial_window?: boolean;
+  relative_percentile?: number | null;
+  comparable_posts?: number;
 };
 export type FeedData = {
   items: Video[];

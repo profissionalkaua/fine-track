@@ -38,4 +38,10 @@ class Settings(BaseSettings):
             environment="test",
             database_url=cls.model_fields["database_url"].default + "_test",
             admin_database_url=cls.model_fields["admin_database_url"].default + "_test",
+            collection_enabled=False,
+            ollama_model="",
+            vision_model="",
+            classifier_model="",
+            whisper_model_path="",
+            pose_model_path="",
         )

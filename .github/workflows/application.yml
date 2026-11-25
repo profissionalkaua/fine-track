@@ -1,0 +1,130 @@
+name: Application
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: application-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  application:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      HUSKY: "0"
+      CI: "true"
+      PULSO_COLLECTION_ENABLED: "false"
+      PULSO_OLLAMA_MODEL: ""
+      PULSO_VISION_MODEL: ""
+      PULSO_CLASSIFIER_MODEL: ""
+      PULSO_CLASSIFIER_CALIBRATED: "false"
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: pulso-local-only
+          POSTGRES_DB: pulso
+        ports: [55432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d pulso"
+          --health-interval 5s --health-timeout 5s --health-retries 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: npm
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install locked dependencies
+        run: |
+          npm ci
+          python -m venv .venv
+          .venv/bin/python -m pip install --require-hashes -r backend/requirements.txt
+          npx playwright install --with-deps chromium
+      - name: Create isolated test database
+        run: |
+          .venv/bin/python - <<'PY'
+          import psycopg
+          with psycopg.connect("postgresql://postgres:pulso-local-only@127.0.0.1:55432/postgres", autocommit=True) as db:
+              db.execute("CREATE DATABASE pulso_test")
+          PY
+      - name: Check types and Python standards
+        run: |
+          npm run typecheck
+          .venv/bin/ruff check backend --output-format github
+          .venv/bin/python -m mypy --config-file backend/pyproject.toml backend/pulso
+      - name: Test API with real PostgreSQL
+        working-directory: backend
+        run: ../.venv/bin/python -m pytest -q
+      - name: Build production frontend
+        run: npm run build
+      - name: Prepare synthetic browser fixtures
+        run: .venv/bin/python scripts/prepare-e2e.py
+      - name: Test desktop and mobile with real API
+        run: npm run test:e2e -- --timeout 30000
+
+  containers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      COMPOSE_PROJECT_NAME: pulso-ci
+      PULSO_COLLECTION_ENABLED: "false"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Generate ephemeral container credentials
+        run: |
+          for name in POSTGRES_PASSWORD PULSO_APP_ROLE_PASSWORD RABBITMQ_PASSWORD PULSO_SMOKE_PASSWORD; do
+            value=$(openssl rand -hex 24)
+            echo "::add-mask::$value"
+            echo "$name=$value" >> "$GITHUB_ENV"
+          done
+      - name: Validate and start complete stack
+        run: |
+          docker compose config --quiet
+          docker compose up --build --detach --wait --wait-timeout 300
+          curl --fail --retry 10 --retry-delay 2 http://127.0.0.1:3000/api/health
+      - name: Provision isolated smoke workspace
+        run: |
+          docker compose run --rm --no-deps -T -e PULSO_SMOKE_PASSWORD migrate python -c 'import os; from pulso.admin import provision; from pulso.config import Settings; provision(Settings(), "smoke@pulso.local", os.environ["PULSO_SMOKE_PASSWORD"], "CI smoke")'
+          python3 scripts/smoke-stack.py
+      - name: Verify worker and broker restart
+        run: |
+          docker compose exec -T scheduler celery -A pulso.worker:celery inspect ping --timeout 15
+          docker compose restart rabbitmq analysis generation
+          docker compose up --detach --wait --wait-timeout 180
+          for service in analysis generation; do
+            worker_host=$(docker compose exec -T "$service" hostname)
+            ready=false
+            for attempt in $(seq 1 10); do
+              if docker compose exec -T scheduler celery -A pulso.worker:celery inspect ping --destination "celery@$worker_host" --timeout 5; then
+                ready=true
+                break
+              fi
+              sleep 2
+            done
+            test "$ready" = true
+          done
+          curl --fail http://127.0.0.1:3000/api/health
+          python3 scripts/smoke-stack.py
+      - name: Show service state on failure
+        if: failure()
+        run: |
+          docker compose ps --all
+          docker compose logs --tail 60 api analysis generation web
+      - name: Remove ephemeral stack
+        if: always()
+        run: docker compose down --volumes --remove-orphans

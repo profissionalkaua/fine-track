@@ -8,9 +8,11 @@ Status: ready-for-human
 
 - [x] Compose, métricas, retenção e runbook de backup/restauração.
 - [ ] Validar isolamento, SSRF, geração com dados hostis e recuperação de jobs.
-- [ ] Suíte, tipos, build, navegador desktop/celular e revisão Standards/Spec.
+- [x] Suíte, tipos, build, navegador desktop/celular e revisão Standards/Spec.
 
 ## Comments
+
+Continuação em 25/11/2026: 46 testes Python (incluindo transcrição offline), 14 de navegador, tipos e build passaram. Texto e transcrição locais configurados. CI de aplicação/Compose preparada; execução de containers e avaliação longitudinal permanecem pendentes. Ver ticket 09 e `docs/implementation-verification.md`.
 
 Fronteiras de teste e critérios detalhados: desenho aprovado e plano de implementação.
 

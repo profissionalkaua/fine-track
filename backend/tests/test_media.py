@@ -1,7 +1,24 @@
+import os
 import subprocess
 
 import imageio_ffmpeg
 import pytest
+
+
+@pytest.mark.skipif(not os.environ.get("PULSO_TEST_WHISPER_PATH"), reason="Optional local weights not selected")
+def test_offline_transcription_does_not_invent_speech_in_silence(tmp_path):
+    from pulso.adapters.media_signals import transcribe
+
+    audio = tmp_path / "silence.wav"
+    subprocess.run(
+        [imageio_ffmpeg.get_ffmpeg_exe(), "-v", "error", "-f", "lavfi", "-i",
+         "anullsrc=r=16000:cl=mono", "-t", "2", "-y", str(audio)],
+        check=True, timeout=30,
+    )
+    result = transcribe(audio, os.environ["PULSO_TEST_WHISPER_PATH"])
+    assert result["state"] == "completed"
+    assert result["language"] == "pt"
+    assert result["segments"] == []
 
 
 def test_authorized_synthetic_media_keeps_original_timestamps_and_honest_absence(tmp_path):

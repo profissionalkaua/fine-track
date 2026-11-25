@@ -1,5 +1,6 @@
 import base64
 import json
+from bisect import bisect_left, bisect_right
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -189,6 +190,20 @@ def videos(
             creator_id=ref.creator_id,
         )
     items = ranking.items + ranking.most_viewed
+    # Compare growth over the same period and window coverage, never lifetime views.
+    for item in items:
+        cohort = sorted(
+            other["velocity"]
+            for other in ranking.items
+            if other["partial_window"] == item.get("partial_window")
+            and abs(other["observed_hours"] - item.get("observed_hours", 0)) <= 1
+        )
+        item["comparable_posts"] = len(cohort)
+        item["relative_percentile"] = None
+        if len(cohort) >= 10 and item.get("velocity") is not None:
+            low = bisect_left(cohort, item["velocity"])
+            high = bisect_right(cohort, item["velocity"])
+            item["relative_percentile"] = round(100 * (low + (high - low) / 2) / len(cohort), 1)
     if order == "performance":
         items = sorted((v for v in items if v.get("velocity") is not None), key=lambda v: -v["velocity"])
     else:
@@ -205,8 +220,7 @@ def videos(
         "cursor": next_cursor,
         "status": "ready",
         "period": period,
-        "as_of": request.app.state.clock(),
-        "relative_percentile": None,
+        "as_of": ranking.as_of,
         "reason": None if items else "Ainda não há observações elegíveis para este perfil.",
     }
 

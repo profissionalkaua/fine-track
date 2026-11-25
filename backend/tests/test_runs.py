@@ -103,6 +103,8 @@ def test_insufficient_references_are_partial_and_can_resume(client):
     result = client.get(f"/v1/runs/{run_id}").json()
     assert result["state"] == "partial"
     assert result["errors"][0]["code"] == "insufficient_references"
+    assert result["result"]["unavailable_signals"] == ["retention_analytics", "audio", "visual_frames"]
+    assert result["result"]["signal_availability"] == {}
     resumed = client.post(f"/v1/runs/{run_id}/resume", headers={"Idempotency-Key": "resume-test-0001"})
     assert resumed.status_code == 202
     assert resumed.json()["id"] != run_id
