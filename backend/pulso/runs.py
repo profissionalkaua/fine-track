@@ -102,6 +102,11 @@ def freeze(db, body, auth, app):
                 raise HTTPException(409, "O ranking não corresponde ao recorte. Atualize o feed.")
             feed["items"], ranking_version = ranking.items, ranking.id
         items = feed["items"]
+        if ranking_version:
+            from .models import Ranking
+
+            full_ranking = db.get(Ranking, ranking_version)
+            items = full_ranking.items
         if body.video_ids is not None:
             requested = set(body.video_ids)
             if not requested <= {v["id"] for v in items}:
@@ -374,6 +379,13 @@ def execute_run(app, run_id, workspace_id):
         run = db.scalar(select(Run).where(Run.id == run_id).with_for_update())
         if run.state == "cancelled":
             return
+        if any(reference["analise_visual"].get("state") != "unavailable" for reference in prepared):
+            run.result = {
+                "ideas": [],
+                "evidence": evidence,
+                "analise_visual": visual,
+                "visual_analyses": {reference["id"]: reference["analise_visual"] for reference in prepared},
+            }
         enqueue(
             db,
             workspace_id,

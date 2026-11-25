@@ -55,3 +55,25 @@ def test_background_collection_publishes_feed_without_duplicate_jobs(client, set
     result = client.get("/v1/top-videos").json()
     assert result["eligible_count"] == 1
     assert result["items"][0]["id"] == "9000000000000000001"
+
+
+def test_profile_resolution_stops_after_global_source_block(client, settings):
+    from pulso.adapters.tiktok import SourceError
+    from pulso.jobs import drain_once
+
+    class Blocked:
+        def collect(self, source, reference, count):
+            raise SourceError("Acesso bloqueado pela fonte.", "blocked")
+
+        def profile(self, handle):
+            raise AssertionError("A fonte suspensa não pode receber novas consultas de perfil.")
+
+    client.app.state.collector = Blocked()
+    settings.collection_enabled = True
+    client.get("/v1/top-videos")
+    drain_once(client.app)
+    profile = client.post("/v1/creators", json={"input": "@nao.consultar"}).json()
+    drain_once(client.app)
+    saved = next(item for item in client.get("/v1/creators").json()["items"] if item["id"] == profile["id"])
+    assert saved["status"] == "unavailable"
+    assert "suspensa" in saved["error"].lower()

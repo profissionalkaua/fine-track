@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Save, SlidersHorizontal, Sparkles } from "lucide-react";
 import { api, date } from "../lib/api";
 import { ErrorNotice } from "./ui";
@@ -42,26 +42,54 @@ export function useBrandRules(enabled: string | null) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [owner, setOwner] = useState<string | null>(null);
+  const activeWorkspace = useRef(enabled);
+  activeWorkspace.current = enabled;
+  const loadingRequest = useRef<AbortController | null>(null);
   async function load() {
+    const context = enabled;
+    loadingRequest.current?.abort();
+    if (!context) return;
+    const controller = new AbortController();
+    loadingRequest.current = controller;
+    setLoaded(false);
+    setOwner(context);
+    setSaved(blank);
+    setDraft(blank);
+    setMessage("");
+    setError("");
     try {
-      const result = await api<Brand>("/brand-rules");
+      const result = await api<Brand>("/brand-rules", {
+        signal: controller.signal,
+        headers: { "X-Workspace-ID": context },
+      });
+      if (controller.signal.aborted || activeWorkspace.current !== context)
+        return;
       setSaved(result);
       setDraft(result);
       setLoaded(true);
       setError("");
     } catch (e) {
-      setError((e as Error).message);
+      if (!controller.signal.aborted && activeWorkspace.current === context)
+        setError((e as Error).message);
     }
   }
   useEffect(() => {
+    setLoaded(false);
+    setSaved(blank);
+    setDraft(blank);
+    setBusy(false);
     if (enabled) void load();
     else {
       setLoaded(false);
       setSaved(blank);
       setDraft(blank);
     }
+    return () => loadingRequest.current?.abort();
   }, [enabled]);
   async function save() {
+    const context = enabled;
+    if (!context || owner !== context || !loaded) return;
     setBusy(true);
     setError("");
     setMessage("");
@@ -69,22 +97,24 @@ export function useBrandRules(enabled: string | null) {
       const { version, saved_at, ...content } = draft;
       const result = await api<Brand>("/brand-rules", {
         method: "PATCH",
+        headers: { "X-Workspace-ID": context },
         body: JSON.stringify({ ...content, expected_version: saved.version }),
       });
+      if (activeWorkspace.current !== context) return;
       setSaved(result);
       setDraft(result);
       setMessage("Regras salvas. Os próximos recortes usarão esta versão.");
     } catch (e) {
-      setError((e as Error).message);
+      if (activeWorkspace.current === context) setError((e as Error).message);
     } finally {
-      setBusy(false);
+      if (activeWorkspace.current === context) setBusy(false);
     }
   }
   return {
-    saved,
-    draft,
+    saved: owner === enabled ? saved : blank,
+    draft: owner === enabled ? draft : blank,
     setDraft,
-    loaded,
+    loaded: loaded && owner === enabled,
     busy,
     error,
     message,

@@ -2208,3 +2208,45 @@ textarea {
     gap: 10px;
   }
 }
+
+.workspace-select-label {
+  font-size: 10px;
+  color: #b8bac7;
+}
+.workspace-select-label select {
+  padding: 5px 3px;
+  font-size: 11px;
+  height: 30px;
+  background: #292735;
+  color: #e3d9fa;
+  border-color: #50435f;
+  margin-top: 4px;
+}
+.mobile-workspace {
+  display: none;
+}
+@media (max-width: 760px) {
+  .mobile-workspace {
+    display: block;
+    width: 145px;
+  }
+  .mobile-workspace select {
+    height: 28px;
+    padding: 3px 5px;
+    font-size: 10px;
+    color: #625475;
+  }
+}
+
+.video-original-link {
+  display: grid;
+  place-items: center;
+  color: #725c89;
+  width: 32px;
+  height: 32px;
+  border-radius: 5px;
+  flex-shrink: 0;
+}
+.video-original-link:hover {
+  background: #f3eefb;
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUpRight,
   SlidersHorizontal,
@@ -37,6 +37,9 @@ export function Feed({
   const [loading, setLoading] = useState(false);
   const [details, setDetails] = useState<Video | null>(null);
   const [reload, setReload] = useState(0);
+  const currentQuery = useRef("");
+  currentQuery.current = `${filters.country}:${filters.period}:${revision}`;
+  const paginationRequest = useRef<AbortController | null>(null);
   const countryNames = useMemo(
     () => new Intl.DisplayNames(["pt-BR"], { type: "region" }),
     [],
@@ -51,6 +54,7 @@ export function Feed({
   }, []);
   useEffect(() => {
     const controller = new AbortController();
+    paginationRequest.current?.abort();
     setLoading(true);
     setError("");
     setData(null);
@@ -65,7 +69,10 @@ export function Feed({
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
       });
-    return () => controller.abort();
+    return () => {
+      controller.abort();
+      paginationRequest.current?.abort();
+    };
   }, [filters.country, filters.period, revision, reload]);
   const tags = useMemo(
     () =>
@@ -87,17 +94,32 @@ export function Feed({
     ) || [];
   async function more() {
     if (!data?.cursor || loading) return;
+    const query = currentQuery.current;
+    const controller = new AbortController();
+    paginationRequest.current = controller;
     setLoading(true);
     setError("");
     try {
       const next = await api<FeedData>(
         `/top-videos?country=${filters.country}&period=${filters.period}&cursor=${encodeURIComponent(data.cursor)}`,
+        { signal: controller.signal },
       );
-      setData({ ...next, items: [...data.items, ...next.items] });
+      if (
+        !controller.signal.aborted &&
+        query === currentQuery.current &&
+        next.version === data.version
+      )
+        setData((current) =>
+          current?.version === data.version
+            ? { ...next, items: [...current.items, ...next.items] }
+            : current,
+        );
     } catch (e) {
-      setError((e as Error).message);
+      if (!controller.signal.aborted && query === currentQuery.current)
+        setError((e as Error).message);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted && query === currentQuery.current)
+        setLoading(false);
     }
   }
   function setCountry(country: string) {

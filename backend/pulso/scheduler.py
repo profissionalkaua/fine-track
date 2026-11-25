@@ -42,27 +42,35 @@ def schedule_once(app):
                 ).all()
             )
             handles = db.scalars(
-                select(WorkspaceCreator.handle).where(WorkspaceCreator.status == "active")
+                select(WorkspaceCreator.handle)
+                .where(WorkspaceCreator.status == "active")
+                .order_by(WorkspaceCreator.handle)
             ).all()
             for country in countries:
                 for mode, hours in [("trending", 2), ("hashtags", 4), ("creators", 6)]:
                     if mode == "creators" and not handles:
                         continue
                     bucket = int(time.timestamp() // (hours * 3600))
-                    enqueue(
-                        db,
-                        item.id,
-                        "collect",
-                        f"schedule:{mode}:{country}:{bucket}",
-                        {
-                            "country": country,
-                            "period": "day",
-                            "category": category,
-                            "mode": mode,
-                            "handles": list(handles),
-                        },
-                        time,
+                    batches = (
+                        [list(handles)[start : start + 6] for start in range(0, len(handles), 6)]
+                        if mode == "creators"
+                        else [[]]
                     )
+                    for batch_index, batch in enumerate(batches):
+                        enqueue(
+                            db,
+                            item.id,
+                            "collect",
+                            f"schedule:{mode}:{country}:{bucket}:{batch_index}",
+                            {
+                                "country": country,
+                                "period": "day",
+                                "category": category,
+                                "mode": mode,
+                                "handles": batch,
+                            },
+                            time,
+                        )
 
 
 def retain(app):

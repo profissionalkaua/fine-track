@@ -182,6 +182,20 @@ export function Dashboard() {
     params.set("area", next);
     window.history.pushState({}, "", `/?${params}`);
   }
+  async function switchWorkspace(workspaceId: string) {
+    try {
+      const result = await api<Identity>("/auth/workspace", {
+        method: "POST",
+        body: JSON.stringify({ workspace_id: workspaceId }),
+      });
+      setSession(result);
+      setIdentity(result);
+      setFeedSnapshot(null);
+      setIdea(null);
+    } catch (error) {
+      setError((error as Error).message);
+    }
+  }
   if (booting)
     return (
       <main className="boot-state" role="status">
@@ -219,20 +233,7 @@ export function Dashboard() {
                 <select
                   aria-label="Workspace ativo"
                   value={identity.workspace.id}
-                  onChange={async (e) => {
-                    try {
-                      const result = await api<Identity>("/auth/workspace", {
-                        method: "POST",
-                        body: JSON.stringify({ workspace_id: e.target.value }),
-                      });
-                      setSession(result);
-                      setIdentity(result);
-                      setFeedSnapshot(null);
-                      setIdea(null);
-                    } catch (error) {
-                      setError((error as Error).message);
-                    }
-                  }}
+                  onChange={(e) => void switchWorkspace(e.target.value)}
                 >
                   {workspaces.map((w) => (
                     <option value={w.id} key={w.id}>
@@ -318,6 +319,21 @@ export function Dashboard() {
             <span className="live-dot" />
             Crie com intenção
           </span>
+          {workspaces.length > 1 && (
+            <div className="mobile-workspace">
+              <select
+                aria-label="Workspace ativo"
+                value={identity.workspace.id}
+                onChange={(e) => void switchWorkspace(e.target.value)}
+              >
+                {workspaces.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    {w.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
         <main id="main-content" className="page-content">
           {error && <ErrorNotice message={error} />}
@@ -340,6 +356,7 @@ export function Dashboard() {
           )}
           {area === "criadores" && (
             <Creators
+              key={identity.workspace.id}
               onIdeas={setIdea}
               editable={identity.workspace.role !== "viewer"}
             />
@@ -357,6 +374,7 @@ export function Dashboard() {
         </main>
       </div>
       <IndividualIdeas
+        key={`${identity.workspace.id}:${idea?.id || "closed"}`}
         video={idea}
         brand={brand.saved}
         filters={filters}

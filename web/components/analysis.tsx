@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUpRight,
   Check,
@@ -104,25 +104,61 @@ const periodNames: Record<string, string> = {
 export function useAnalysisRun(enabled: string | null) {
   const [run, setRun] = useState<AnalysisRun | null>(null);
   const [error, setError] = useState("");
+  const [owner, setOwner] = useState<string | null>(null);
+  const active = useRef(enabled);
+  active.current = enabled;
+  const update = useCallback(
+    (value: AnalysisRun | null) => {
+      if (active.current === enabled) {
+        setOwner(enabled);
+        setRun(value);
+      }
+    },
+    [enabled],
+  );
   useEffect(() => {
     setRun(null);
+    setOwner(enabled);
+    setError("");
     if (!enabled) return;
-    api<{ items: AnalysisRun[] }>("/runs")
-      .then((r) => setRun(r.items.find((v) => v.scope === "feed") || null))
-      .catch((e) => setError(e.message));
+    const controller = new AbortController();
+    api<{ items: AnalysisRun[] }>("/runs", { signal: controller.signal })
+      .then((r) => {
+        if (!controller.signal.aborted)
+          update(r.items.find((v) => v.scope === "feed") || null);
+      })
+      .catch((e) => {
+        if (!controller.signal.aborted && active.current === enabled)
+          setError(e.message);
+      });
+    return () => controller.abort();
   }, [enabled]);
   useEffect(() => {
-    if (!run || terminal.has(run.state)) return;
+    if (owner !== enabled || !run || terminal.has(run.state)) return;
+    const controller = new AbortController();
     const timer = setInterval(
       () =>
-        api<AnalysisRun>(`/runs/${run.id}`)
-          .then(setRun)
-          .catch((e) => setError(e.message)),
+        api<AnalysisRun>(`/runs/${run.id}`, { signal: controller.signal })
+          .then((value) => {
+            if (!controller.signal.aborted) update(value);
+          })
+          .catch((e) => {
+            if (!controller.signal.aborted && active.current === enabled)
+              setError(e.message);
+          }),
       1500,
     );
-    return () => clearInterval(timer);
-  }, [run?.id, run?.state]);
-  return { run, setRun, error, setError };
+    return () => {
+      clearInterval(timer);
+      controller.abort();
+    };
+  }, [run?.id, run?.state, enabled, owner, update]);
+  return {
+    run: owner === enabled ? run : null,
+    setRun: update,
+    error: owner === enabled ? error : "",
+    setError,
+  };
 }
 
 function scriptText(idea: Idea) {

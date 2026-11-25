@@ -11,7 +11,7 @@ import {
   Check,
 } from "lucide-react";
 import { api, date, type Video } from "../lib/api";
-import { ErrorNotice, VideoCard } from "./ui";
+import { ErrorNotice, Metrics, Modal, VideoCard } from "./ui";
 
 type Creator = {
   id: string;
@@ -35,6 +35,7 @@ export function Creators({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [removed, setRemoved] = useState<Creator | null>(null);
+  const [details, setDetails] = useState<Video | null>(null);
   const [order, setOrder] = useState("recent");
   const [videos, setVideos] = useState<Video[]>([]);
   const [videoReason, setVideoReason] = useState("");
@@ -341,7 +342,7 @@ export function Creators({
                     <VideoCard
                       key={v.id}
                       video={v}
-                      onDetails={onIdeas}
+                      onDetails={setDetails}
                       onIdeas={onIdeas}
                     />
                   ))}
@@ -372,6 +373,58 @@ export function Creators({
           )}
         </section>
       </div>
+      <Modal
+        open={!!details}
+        onClose={() => setDetails(null)}
+        title="Detalhes do vídeo"
+        description={
+          details ? `@${details.handle} · ${details.description}` : undefined
+        }
+      >
+        {details && (
+          <div className="detail-content">
+            <Metrics video={details} />
+            <dl className="detail-list">
+              <div>
+                <dt>Publicado em</dt>
+                <dd>{date(details.published_at)}</dd>
+              </div>
+              <div>
+                <dt>Observado em</dt>
+                <dd>{date(details.observed_at)}</dd>
+              </div>
+            </dl>
+            <p className="muted">
+              Métricas acumuladas globais do vídeo. O crescimento é calculado
+              apenas quando existem medições comparáveis.
+            </p>
+            <div className="form-actions">
+              {details.url ? (
+                <a
+                  className="button secondary"
+                  href={details.url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Ver no TikTok
+                  <ArrowUpRight size={14} />
+                </a>
+              ) : (
+                <span className="muted">Link original indisponível</span>
+              )}
+              <button
+                className="button primary"
+                onClick={() => {
+                  onIdeas(details);
+                  setDetails(null);
+                }}
+              >
+                Ideias e roteiros
+              </button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </>
   );
 }

@@ -44,8 +44,10 @@ export type FeedData = {
   reason: string | null;
 };
 let csrf = "";
+let workspaceId = "";
 export function setSession(identity: Identity | null) {
   csrf = identity?.csrf_token || "";
+  workspaceId = identity?.workspace.id || "";
 }
 
 export async function api<T>(
@@ -58,6 +60,7 @@ export async function api<T>(
     headers: {
       "Content-Type": "application/json",
       "X-CSRF-Token": csrf,
+      "X-Workspace-ID": workspaceId,
       ...options.headers,
     },
   });

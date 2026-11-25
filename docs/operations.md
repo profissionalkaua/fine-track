@@ -2,7 +2,7 @@
 
 ## Processos e filas
 
-API e frontend servem o produto; Celery executa `collection` e `analysis`. Um único processo beat publica outbox a cada cinco segundos, avalia agendamentos a cada cinco minutos e aplica retenção diariamente. Execute uma instância do scheduler; workers podem crescer por fila. Jobs usam entrega tardia, lease e chave idempotente. Acesso público ao TikTok é serializado por advisory lock no PostgreSQL e reaproveita cache entre workspaces.
+API e frontend servem o produto; Celery executa filas `collection`, `classification`, `analysis`, `multimodal` e `generation`. Um único processo beat publica outbox a cada cinco segundos, avalia agendamentos a cada cinco minutos e aplica retenção diariamente. Execute uma instância do scheduler; workers podem crescer por fila. Jobs usam entrega tardia, lease e chave idempotente. Acesso público ao TikTok é serializado por advisory lock no PostgreSQL e reaproveita cache entre workspaces.
 
 Perfis são reobservados em janelas de seis horas, hashtags em quatro horas e recomendações em duas horas. Coletores respeitam orçamento por fonte e limitações globais. A adição de um criador pode gerar uma coleta inicial fora do ciclo periódico. Perfis removidos são conferidos novamente antes de enfileirar consultas exclusivas.
 
@@ -43,7 +43,7 @@ Use credenciais administrativas apenas no terminal de manutenção. Na pasta `ba
 ..\.venv\Scripts\python.exe -m pulso.backup check ../.runtime/backups/pulso.dump pulso_restore_verificacao
 ```
 
-O primeiro comando recusa sobrescrever um arquivo existente e grava manifesto. O segundo cria somente um banco novo cujo nome começa por `pulso_restore_`; recusa sobrescrever um banco existente. Valida a revisão Alembic e a leitura de tabelas após a restauração. Ferramentas `pg_dump`/`pg_restore` precisam ser compatíveis com o servidor; no ambiente Windows local, os binários do pacote embedded-postgres são localizados automaticamente.
+O primeiro comando recusa sobrescrever um arquivo existente e grava manifesto. O segundo cria somente um banco novo cujo nome começa por `pulso_restore_`; recusa sobrescrever um banco existente. Valida a revisão Alembic e a leitura de tabelas após a restauração. Ferramentas `pg_dump`/`pg_restore` precisam ser compatíveis com o servidor e estar no PATH. O pacote mínimo embedded-postgres não inclui esses clientes. Nesta sessão, os clientes oficiais foram extraídos em `.runtime/postgresql-tools/pgsql/bin`, caminho alternativo reconhecido pelo comando.
 
 Armazene backups protegidos e fora da máquina antes de atender um piloto real. A restauração de teste contém dados privados: restrinja seu acesso e gerencie sua retenção com os mesmos cuidados do banco de origem.
 

@@ -84,7 +84,7 @@ Com o PostgreSQL local ativo, na raiz:
 
 ```powershell
 .\.venv\Scripts\python.exe -m pytest -c backend/pyproject.toml backend/tests
-.\.venv\Scripts\python.exe -m mypy backend/pulso
+.\.venv\Scripts\python.exe -m mypy --config-file backend/pyproject.toml backend/pulso
 .\.venv\Scripts\ruff.exe check backend
 npm.cmd run typecheck
 npm.cmd run build
@@ -104,7 +104,7 @@ docker compose run --rm migrate python -m pulso.admin user --email voce@exemplo.
 docker compose --profile models --profile monitoring up -d
 ```
 
-Compose usa PostgreSQL, RabbitMQ, API, frontend, coleta, análise e um único scheduler. O processo de migração tem credenciais próprias; a API e os workers recebem somente o papel de aplicação, sem bypass de RLS. Containers de aplicação executam sem root, sem capabilities e com privilégios limitados. A interface fica restrita a `127.0.0.1:3000`.
+Compose usa PostgreSQL, RabbitMQ, API, frontend, filas separadas de coleta, classificação, análise, mídia e geração, e um único scheduler. O processo de migração tem credenciais próprias; a API e os workers recebem somente o papel de aplicação, sem bypass de RLS. Containers de aplicação executam sem root, sem capabilities e com privilégios limitados. A interface fica restrita a `127.0.0.1:3000`.
 
 As imagens de infraestrutura usam tags de piloto. Antes de uma liberação pública, valide e fixe seus digests e a revisão dos modelos. O Docker Compose não foi executado nesta máquina porque não há runtime Docker disponível.
 
@@ -113,5 +113,7 @@ As imagens de infraestrutura usam tags de piloto. Antes de uma liberação públ
 Veja [o runbook](docs/operations.md) para métricas, agendamento, retenção, backup e restauração. A API publica `/health` e métricas Prometheus em `/metrics`, sem rótulos com nomes de usuários, workspaces ou categorias privadas.
 
 Implementação e critérios: [desenho aprovado](docs/superpowers/specs/2026-11-25-pulso-design.md), [plano](docs/superpowers/plans/2026-11-25-pulso.md) e [tickets](.scratch/pulso/issues/).
+
+Resultados dos testes, revisão independente e pendências: [registro de verificações](docs/implementation-verification.md).
 
 O piloto real ainda deve validar permissão de coleta, disponibilidade das fontes, sinais geográficos, calibração temática, modelos em português e metas de cobertura/latência por sete dias. A referência visual da Library não pôde ser acessada nesta sessão; a interface segue os requisitos textuais, sem declaração de paridade pixel a pixel.

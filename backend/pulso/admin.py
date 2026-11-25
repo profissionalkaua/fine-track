@@ -157,40 +157,20 @@ def main():
 
 
 def load_observations(settings: Settings, records: list[dict], as_of=None):
-    """Load normalized observations through the administrative ingestion boundary."""
-    from datetime import datetime
-
-    from .feed import publish_ranking
-    from .models import Snapshot, Video
+    """Administrative ingestion uses the same normalization persistence as collection."""
+    from .feed import ingest_records, publish_ranking
 
     engine = engine_for(settings.admin_database_url)
-    with session_for(engine) as db, db.begin():
-        for record in records:
-            if record.get("synthetic") and settings.environment not in {"development", "test"}:
-                raise ValueError("Fixtures são proibidas neste ambiente.")
-            data = {k: v for k, v in record.items() if k != "snapshots"}
-            if isinstance(data["published_at"], str):
-                data["published_at"] = datetime.fromisoformat(data["published_at"])
-            db.merge(Video(**data))
-            db.flush()
-            for sample in record.get("snapshots", []):
-                sample = dict(sample)
-                if isinstance(sample["observed_at"], str):
-                    sample["observed_at"] = datetime.fromisoformat(sample["observed_at"])
-                existing = db.scalar(
-                    select(Snapshot).where(
-                        Snapshot.video_id == record["id"],
-                        Snapshot.observed_at == sample["observed_at"],
-                        Snapshot.source == sample["source"],
+    try:
+        with session_for(engine) as db, db.begin():
+            ingest_records(db, records, allow_synthetic=settings.environment in {"development", "test"})
+            for country in {record["country"] for record in records if record.get("country")}:
+                for period in ["day", "week", "month"]:
+                    publish_ranking(
+                        db, country, period, as_of=as_of, freshness=settings.latest_snapshot_hours
                     )
-                )
-                if existing is None:
-                    db.add(Snapshot(video_id=record["id"], **sample))
-        db.flush()
-        for country in {r["country"] for r in records if r.get("country")}:
-            for period in ["day", "week", "month"]:
-                publish_ranking(db, country, period, as_of=as_of)
-    engine.dispose()
+    finally:
+        engine.dispose()
 
 
 def register_media(settings, workspace_id, video_id, path, rights_reference):

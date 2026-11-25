@@ -36,6 +36,9 @@ def identity(request: Request, db=Depends(database)):
     membership = db.get(Membership, (session.user_id, session.workspace_id))
     if membership is None:
         raise HTTPException(403, "Você não participa deste workspace.")
+    expected_workspace = request.headers.get("x-workspace-id")
+    if expected_workspace and expected_workspace != session.workspace_id:
+        raise HTTPException(409, "O workspace ativo mudou. Recarregue a área antes de continuar.")
     if request.method not in {"GET", "HEAD", "OPTIONS"}:
         if not compare_digest(request.headers.get("x-csrf-token", ""), session.csrf):
             raise HTTPException(403, "Sessão de formulário inválida. Atualize a página.")

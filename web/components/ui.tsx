@@ -216,6 +216,18 @@ export function VideoCard({
         </div>
       </div>
       <div className="card-actions">
+        {video.url && (
+          <a
+            className="video-original-link"
+            href={video.url}
+            target="_blank"
+            rel="noreferrer"
+            aria-label="Ver no TikTok"
+            title="Ver no TikTok"
+          >
+            <ArrowUpRight size={16} />
+          </a>
+        )}
         <button
           onClick={() => {
             rememberFocus();

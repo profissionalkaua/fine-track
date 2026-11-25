@@ -188,3 +188,33 @@ def test_unexpected_provider_failure_does_not_leave_run_stuck_in_progress(client
     result = client.get(f"/v1/runs/{run_id}").json()
     assert result["state"] == "failed"
     assert result["errors"][0]["code"] == "worker_failed"
+
+
+def test_run_accepts_loaded_references_beyond_the_first_fifty_positions(client, settings):
+    from pulso.admin import load_observations
+
+    records = [
+        observation(
+            str(9000000000000000000 + i),
+            end_views=1000 + 22000 * (61 - i),
+            tags=["later"] if i == 55 else ["other"],
+        )
+        for i in range(1, 61)
+    ]
+    load_observations(settings, records, as_of=AS_OF)
+    first = client.get("/v1/top-videos").json()
+    second = client.get("/v1/top-videos", params={"cursor": first["cursor"]}).json()
+    third = client.get("/v1/top-videos", params={"cursor": second["cursor"]}).json()
+    selected = next(item for item in third["items"] if item["hashtags"][0]["key"] == "later")
+    created = client.post(
+        "/v1/runs",
+        json={
+            "scope": "feed",
+            "ranking_version": first["version"],
+            "video_ids": [selected["id"]],
+            "hashtag": "later",
+        },
+        headers={"Idempotency-Key": "third-page-run-01"},
+    )
+    assert created.status_code == 202
+    assert created.json()["frozen"]["references"][0]["id"] == selected["id"]
