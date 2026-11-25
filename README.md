@@ -2,6 +2,23 @@
 
 Aplicativo de inteligência de conteúdo para TikTok, com feed por crescimento observado, referências de criadores, regras de marca e análises com evidências. Implementação orientada pelas Matt Pocock Skills, com TDD nas fronteiras aprovadas.
 
+Repositório: [profissionalkaua/fine-track](https://github.com/profissionalkaua/fine-track).
+
+## Conventional Commits
+
+Após `npm ci` ou `npm install`, o Husky ativa a validação automática das mensagens pelo commitlint. Use `tipo(escopo): descrição`, com escopo opcional:
+
+```text
+feat(feed): adicionar filtro de país
+fix(runs): preservar evidências após falha
+docs: atualizar instruções de instalação
+chore(deps): atualizar dependências
+```
+
+Tipos aceitos: `build`, `chore`, `ci`, `docs`, `feat`, `fix`, `perf`, `refactor`, `revert`, `style` e `test`. Mudanças incompatíveis podem usar `!` e um rodapé `BREAKING CHANGE:`. O histórico existente é preservado.
+
+Execute `npm run lint:commits` para validar o histórico local. O workflow **Conventional Commits** valida os commits de pushes e pull requests no GitHub. O instalador ignora hooks em CI, produção e builds sem `.git`.
+
 ## Executar no Windows
 
 Pré-requisitos: Python 3.12 e Node 22. O projeto instala uma versão Node 22 compatível localmente para os subprocessos do Next.
