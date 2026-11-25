@@ -1,6 +1,19 @@
 import pytest
 
 
+def test_tiktok_bootstrap_cdn_allows_public_addresses_and_rejects_private_dns(monkeypatch):
+    import socket
+
+    from pulso.adapters.tiktok import safe_public_url
+
+    url = "https://sf16-website-login.neutral.ttwstatic.com/obj/test/bootstrap.js"
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **kw: [(2, 1, 6, "", ("8.8.8.8", 443))])
+    assert safe_public_url(url) == url
+    monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **kw: [(2, 1, 6, "", ("127.0.0.1", 443))])
+    with pytest.raises(ValueError, match="interno"):
+        safe_public_url(url)
+
+
 def test_normalization_keeps_large_ids_null_metrics_and_uncertain_country():
     from pulso.adapters.tiktok import normalize_video
 

@@ -13,8 +13,12 @@ def transcribe(path: Path, model_path: str):
             "segments": [],
         }
     try:
+        import av
         from faster_whisper import WhisperModel
 
+        with av.open(str(path)) as media:
+            if not media.streams.audio:
+                return {"state": "unavailable", "reason": "Mídia sem faixa de áudio.", "segments": []}
         model = WhisperModel(model_path, device="cpu", compute_type="int8", local_files_only=True)
         segments, info = model.transcribe(str(path), language="pt", vad_filter=True)
         return {

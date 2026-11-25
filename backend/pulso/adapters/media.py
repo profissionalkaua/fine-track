@@ -5,29 +5,36 @@ import re
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 import httpx
 import imageio_ffmpeg
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .media_signals import estimate_pose, extract_text, transcribe
+
+SignalField = Literal["movement", "dance_style", "scene", "lighting", "clothing", "people_count", "camera"]
 
 
 class Segment(BaseModel):
     model_config = ConfigDict(extra="forbid")
     start_ms: int = Field(ge=0)
     end_ms: int = Field(gt=0)
-    movement: str | None = Field(default=None, max_length=2000)
-    dance_style: str | None = Field(default=None, max_length=500)
-    scene: str | None = Field(default=None, max_length=2000)
-    lighting: str | None = Field(default=None, max_length=2000)
-    clothing: str | None = Field(default=None, max_length=2000)
-    people_count: int | None = Field(default=None, ge=0, le=100)
-    camera: str | None = Field(default=None, max_length=2000)
+    movement: str | None = Field(max_length=2000)
+    dance_style: str | None = Field(max_length=500)
+    scene: str | None = Field(max_length=2000)
+    lighting: str | None = Field(max_length=2000)
+    clothing: str | None = Field(max_length=2000)
+    people_count: int | None = Field(ge=0, le=100)
+    camera: str | None = Field(max_length=2000)
     confidence: float = Field(ge=0, le=1)
-    observed_fields: list[str] = Field(default_factory=list, max_length=10)
-    inferred_fields: list[str] = Field(default_factory=list, max_length=10)
+    observed_fields: list[SignalField] = Field(default_factory=list, max_length=7)
+    inferred_fields: list[SignalField] = Field(default_factory=list, max_length=7)
+
+    @field_validator("movement", "dance_style", "scene", "lighting", "clothing", "camera")
+    @classmethod
+    def normalize_absent_text(cls, value):
+        return value.strip() or None if value is not None else None
 
 
 class VisualOutput(BaseModel):
@@ -41,7 +48,7 @@ class Frame(TypedDict):
 
 
 class MediaAnalyzer:
-    version = "media-v1"
+    version = "media-v2"
 
     def __init__(self, settings, media_root=None, temp_root=None):
         self.settings = settings
@@ -167,10 +174,25 @@ class MediaAnalyzer:
                             if style and style.casefold() in caption.casefold()
                             else "estilo não identificado"
                         )
-                        for field in ["lighting", "scene", "camera"]:
-                            if field not in segment.inferred_fields:
-                                segment.inferred_fields.append(field)
-                    result.update(state="completed", reason=None, segments=output.model_dump()["segments"])
+                        inferred: set[SignalField] = set(segment.inferred_fields)
+                        for field in ("lighting", "scene", "camera"):
+                            if getattr(segment, field) is not None:
+                                inferred.add(field)
+                        segment.inferred_fields = sorted(
+                            field for field in inferred if getattr(segment, field) is not None
+                        )
+                        segment.observed_fields = list(dict.fromkeys(
+                            field for field in segment.observed_fields
+                            if field not in inferred and getattr(segment, field) is not None
+                        ))
+                    usable_fields = ("movement", "scene", "lighting", "clothing", "people_count", "camera")
+                    if any(
+                        getattr(segment, field) is not None
+                        for segment in output.segments for field in usable_fields
+                    ):
+                        result.update(state="completed", reason=None, segments=output.model_dump()["segments"])
+                    else:
+                        result["reason"] = "Modelo retornou estrutura válida, mas sem sinais visuais utilizáveis."
                 except (httpx.HTTPError, ValueError, KeyError):
                     result["reason"] = "O modelo de visão está indisponível ou retornou evidência inválida."
             return result
@@ -198,7 +220,13 @@ class MediaAnalyzer:
                             "Relate somente movimentos e características visíveis. Marque inferências de ambiente, fonte de luz "
                             "e produção como estimativas; não identifique pessoas nem autoria. Nome de dança exige evidência "
                             "adicional e pode ficar nulo. Inclua trechos em milissegundos da mídia original. "
-                            "Declare confiança baixa para oclusão, corte ou corpo fora do quadro; use null para campos sem evidência.",
+                            "Declare confiança baixa para oclusão, corte ou corpo fora do quadro; use null para campos sem evidência. "
+                            "Cada trecho deve respeitar start_ms < end_ms <= duration_ms. Uma cena estática pode usar um único "
+                            "trecho de 0 até duration_ms. Não crie um trecho que começa no fim do vídeo. "
+                            "observed_fields e inferred_fields usam somente movement, dance_style, scene, lighting, clothing, "
+                            "people_count e camera; não preencha esses arrays com outros rótulos. "
+                            "Os nomes dos campos permanecem em inglês, mas as descrições de movimentos, cena, iluminação, "
+                            "roupas e câmera devem ser escritas em português brasileiro.",
                         },
                         {
                             "role": "user",

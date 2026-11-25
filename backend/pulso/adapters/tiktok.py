@@ -56,6 +56,7 @@ def safe_public_url(value: str, *, media=False):
         "tiktok.com",
         "tiktokcdn.com",
         "tiktokcdn-us.com",
+        "ttwstatic.com",  # Bootstrap assets requested by the public TikTok page.
         "byteoversea.com",
         "ibytedtos.com",
         "byteimg.com",

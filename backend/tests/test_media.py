@@ -1,8 +1,50 @@
+import json
 import os
 import subprocess
 
 import imageio_ffmpeg
 import pytest
+
+
+def test_visual_output_rejects_invented_evidence_field_names():
+    from pulso.adapters.media import VisualOutput
+
+    with pytest.raises(ValueError):
+        VisualOutput.model_validate({"segments": [{
+            "start_ms": 0, "end_ms": 1000, "confidence": 0.9, "observed_fields": ["blue"],
+            "movement": None, "dance_style": None, "scene": None, "lighting": None,
+            "clothing": None, "people_count": None, "camera": None,
+        }]})
+
+
+@pytest.mark.parametrize("scene", [None, "", "  "])
+def test_empty_model_fields_leave_visual_analysis_partial(tmp_path, monkeypatch, scene):
+    from functools import partial
+
+    import httpx
+
+    from pulso.adapters.media import MediaAnalyzer
+    from pulso.config import Settings
+
+    payload = {"segments": [{
+        "start_ms": 0, "end_ms": 2000, "confidence": 0.9,
+        "movement": None, "dance_style": None, "scene": scene, "lighting": None,
+        "clothing": None, "people_count": None, "camera": None,
+    }]}
+    transport = httpx.MockTransport(lambda request: httpx.Response(
+        200, json={"message": {"content": json.dumps(payload)}}
+    ))
+    monkeypatch.setattr(httpx, "Client", partial(httpx.Client, transport=transport))
+    video = tmp_path / "blue.mp4"
+    subprocess.run(
+        [imageio_ffmpeg.get_ffmpeg_exe(), "-v", "error", "-f", "lavfi", "-i",
+         "color=c=blue:s=160x120:d=2", "-y", str(video)], check=True, timeout=30,
+    )
+    settings = Settings.testing()
+    settings.vision_model = "fixture-external-model"
+    result = MediaAnalyzer(settings, media_root=tmp_path, temp_root=tmp_path / "work").analyze(video)
+    assert result["state"] == "partial"
+    assert "sem sinais" in result["reason"]
 
 
 @pytest.mark.skipif(not os.environ.get("PULSO_TEST_WHISPER_PATH"), reason="Optional local weights not selected")
@@ -18,6 +60,21 @@ def test_offline_transcription_does_not_invent_speech_in_silence(tmp_path):
     result = transcribe(audio, os.environ["PULSO_TEST_WHISPER_PATH"])
     assert result["state"] == "completed"
     assert result["language"] == "pt"
+    assert result["segments"] == []
+
+
+@pytest.mark.skipif(not os.environ.get("PULSO_TEST_WHISPER_PATH"), reason="Optional local weights not selected")
+def test_transcription_reports_absent_audio_track_without_failing_video_analysis(tmp_path):
+    from pulso.adapters.media_signals import transcribe
+
+    video = tmp_path / "no-audio.mp4"
+    subprocess.run(
+        [imageio_ffmpeg.get_ffmpeg_exe(), "-v", "error", "-f", "lavfi", "-i",
+         "color=c=blue:s=160x120:d=2", "-y", str(video)], check=True, timeout=30,
+    )
+    result = transcribe(video, os.environ["PULSO_TEST_WHISPER_PATH"])
+    assert result["state"] == "unavailable"
+    assert "sem faixa" in result["reason"]
     assert result["segments"] == []
 
 
