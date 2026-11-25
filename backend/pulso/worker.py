@@ -18,6 +18,9 @@ celery.conf.update(
     task_reject_on_worker_lost=True,
     worker_prefetch_multiplier=1,
     task_serializer="json",
+    # Do not mark an outbox envelope sent until RabbitMQ confirms persistence.
+    broker_transport_options={"confirm_publish": True},
+    task_default_delivery_mode="persistent",
     accept_content=["json"],
     result_serializer="json",
     broker_connection_retry_on_startup=True,
