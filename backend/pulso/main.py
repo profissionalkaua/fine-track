@@ -69,7 +69,7 @@ def create_app(settings: Settings | None = None):
         period: str = "day",
         limit: int = 20,
         cursor: str | None = None,
-        db=Depends(database),
+        db=Depends(database, scope="function"),
     ):
         country = country or db.get(User, auth[0].user_id).country
         if not pycountry.countries.get(alpha_2=country) or period not in {"day", "week", "month"}:

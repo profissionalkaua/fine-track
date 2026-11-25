@@ -46,7 +46,7 @@ class Confirmation(BaseModel):
 
 
 @router.get("")
-def list_creators(auth: Identity, db=Depends(database)):
+def list_creators(auth: Identity, db=Depends(database, scope="function")):
     refs = db.scalars(
         select(WorkspaceCreator)
         .where(WorkspaceCreator.status != "removed")
@@ -56,7 +56,7 @@ def list_creators(auth: Identity, db=Depends(database)):
 
 
 @router.post("", status_code=202)
-def add_profile(body: AddProfile, auth: Identity, request: Request, db=Depends(database)):
+def add_profile(body: AddProfile, auth: Identity, request: Request, db=Depends(database, scope="function")):
     require_editor(auth)
     try:
         handle = parse_handle(body.input)
@@ -88,7 +88,7 @@ def add_profile(body: AddProfile, auth: Identity, request: Request, db=Depends(d
 
 
 @router.post("/{ref_id}/confirm")
-def confirm(ref_id: str, body: Confirmation, auth: Identity, request: Request, db=Depends(database)):
+def confirm(ref_id: str, body: Confirmation, auth: Identity, request: Request, db=Depends(database, scope="function")):
     require_editor(auth)
     ref = find(db, ref_id)
     if ref.status not in {"preview", "active"} or ref.creator_id != body.creator_id:
@@ -107,7 +107,7 @@ def confirm(ref_id: str, body: Confirmation, auth: Identity, request: Request, d
 
 
 @router.delete("/{ref_id}")
-def remove(ref_id: str, auth: Identity, db=Depends(database)):
+def remove(ref_id: str, auth: Identity, db=Depends(database, scope="function")):
     require_editor(auth)
     ref = find(db, ref_id)
     if ref.status != "removed":
@@ -116,7 +116,7 @@ def remove(ref_id: str, auth: Identity, db=Depends(database)):
 
 
 @router.post("/{ref_id}/restore")
-def restore(ref_id: str, auth: Identity, db=Depends(database)):
+def restore(ref_id: str, auth: Identity, db=Depends(database, scope="function")):
     require_editor(auth)
     ref = find(db, ref_id)
     if ref.status == "removed":
@@ -125,7 +125,7 @@ def restore(ref_id: str, auth: Identity, db=Depends(database)):
 
 
 @router.post("/{ref_id}/retry", status_code=202)
-def retry(ref_id: str, auth: Identity, request: Request, db=Depends(database)):
+def retry(ref_id: str, auth: Identity, request: Request, db=Depends(database, scope="function")):
     require_editor(auth)
     ref = find(db, ref_id)
     if ref.status == "removed":
@@ -150,7 +150,7 @@ def videos(
     order: str = "recent",
     period: str = "day",
     cursor: str | None = None,
-    db=Depends(database),
+    db=Depends(database, scope="function"),
 ):
     ref = find(db, ref_id)
     if ref.status != "active":

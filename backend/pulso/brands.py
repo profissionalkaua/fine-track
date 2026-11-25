@@ -42,12 +42,12 @@ class BrandPatch(BaseModel):
 
 
 @router.get("")
-def get_rules(auth: Identity, db=Depends(database)):
+def get_rules(auth: Identity, db=Depends(database, scope="function")):
     return describe(current_rules(db))
 
 
 @router.patch("")
-def save_rules(body: BrandPatch, auth: Identity, request: Request, db=Depends(database)):
+def save_rules(body: BrandPatch, auth: Identity, request: Request, db=Depends(database, scope="function")):
     require_editor(auth)
     if not set(body.analysis_elements) <= ELEMENTS:
         raise HTTPException(422, "Elemento de análise inválido.")

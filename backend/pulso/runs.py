@@ -227,19 +227,19 @@ def create(db, body, auth, app, key, parent_id=None):
 
 @router.post("", status_code=202)
 def create_run(
-    body: RunRequest, auth: Identity, request: Request, idempotency_key: Key, db=Depends(database)
+    body: RunRequest, auth: Identity, request: Request, idempotency_key: Key, db=Depends(database, scope="function")
 ):
     return describe(create(db, body, auth, request.app, idempotency_key))
 
 
 @router.get("")
-def list_runs(auth: Identity, db=Depends(database)):
+def list_runs(auth: Identity, db=Depends(database, scope="function")):
     runs = db.scalars(select(Run).order_by(Run.created_at.desc()).limit(20)).all()
     return {"items": [describe(run) for run in runs]}
 
 
 @router.post("/preview")
-def preview(body: RunRequest, auth: Identity, request: Request, db=Depends(database)):
+def preview(body: RunRequest, auth: Identity, request: Request, db=Depends(database, scope="function")):
     frozen = freeze(db, body, auth, request.app)
     return {
         "eligible_count": len(frozen["references"]),
@@ -250,12 +250,12 @@ def preview(body: RunRequest, auth: Identity, request: Request, db=Depends(datab
 
 
 @router.get("/{run_id}")
-def get_run(run_id: str, auth: Identity, db=Depends(database)):
+def get_run(run_id: str, auth: Identity, db=Depends(database, scope="function")):
     return describe(find(db, run_id))
 
 
 @router.get("/{run_id}/export")
-def export_run(run_id: str, auth: Identity, db=Depends(database)):
+def export_run(run_id: str, auth: Identity, db=Depends(database, scope="function")):
     run = find(db, run_id)
     content = {"schema_version": "1.0", **describe(run)}
     return Response(
@@ -266,7 +266,7 @@ def export_run(run_id: str, auth: Identity, db=Depends(database)):
 
 
 @router.post("/{run_id}/cancel")
-def cancel_run(run_id: str, auth: Identity, request: Request, db=Depends(database)):
+def cancel_run(run_id: str, auth: Identity, request: Request, db=Depends(database, scope="function")):
     require_editor(auth)
     run = db.scalar(select(Run).where(Run.id == run_id).with_for_update())
     if run is None:
@@ -283,7 +283,7 @@ def resume_run(
     request: Request,
     idempotency_key: Key,
     body: RunRequest | None = None,
-    db=Depends(database),
+    db=Depends(database, scope="function"),
 ):
     run = find(db, run_id)
     if run.state not in {"partial", "failed", "cancelled"}:

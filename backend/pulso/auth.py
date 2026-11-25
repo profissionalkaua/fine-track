@@ -28,7 +28,7 @@ def database(request: Request):
         db.commit()
 
 
-def identity(request: Request, db=Depends(database)):
+def identity(request: Request, db=Depends(database, scope="function")):
     token = request.cookies.get("pulso_session", "")
     session = db.get(LoginSession, digest(token)) if token else None
     if session is None or session.expires_at <= now():
@@ -73,7 +73,7 @@ class Login(BaseModel):
 
 
 @router.post("/auth/login")
-def login(body: Login, request: Request, response: Response, db=Depends(database)):
+def login(body: Login, request: Request, response: Response, db=Depends(database, scope="function")):
     if request.headers.get("origin") not in {None, request.app.state.settings.origin}:
         raise HTTPException(403, "Origem inválida.")
     ip = request.client.host if request.client else "unknown"
@@ -129,12 +129,12 @@ def login(body: Login, request: Request, response: Response, db=Depends(database
 
 
 @router.get("/auth/me")
-def me(auth: Identity, db=Depends(database)):
+def me(auth: Identity, db=Depends(database, scope="function")):
     return describe(db, *auth)
 
 
 @router.post("/auth/logout")
-def logout(auth: Identity, response: Response, db=Depends(database)):
+def logout(auth: Identity, response: Response, db=Depends(database, scope="function")):
     db.delete(auth[0])
     response.delete_cookie("pulso_session", path="/")
     return {"ok": True}
@@ -145,7 +145,7 @@ class Preference(BaseModel):
 
 
 @router.patch("/preferences")
-def preferences(body: Preference, auth: Identity, db=Depends(database)):
+def preferences(body: Preference, auth: Identity, db=Depends(database, scope="function")):
     if not pycountry.countries.get(alpha_2=body.country):
         raise HTTPException(422, "País inválido.")
     db.get(User, auth[0].user_id).country = body.country
@@ -153,7 +153,7 @@ def preferences(body: Preference, auth: Identity, db=Depends(database)):
 
 
 @router.get("/workspaces")
-def workspaces(auth: Identity, db=Depends(database)):
+def workspaces(auth: Identity, db=Depends(database, scope="function")):
     rows = db.execute(
         select(Workspace, Membership.role)
         .join(Membership, Membership.workspace_id == Workspace.id)
@@ -168,7 +168,7 @@ class WorkspaceChoice(BaseModel):
 
 
 @router.post("/auth/workspace")
-def choose_workspace(body: WorkspaceChoice, auth: Identity, db=Depends(database)):
+def choose_workspace(body: WorkspaceChoice, auth: Identity, db=Depends(database, scope="function")):
     membership = db.get(Membership, (auth[0].user_id, body.workspace_id))
     if membership is None:
         raise HTTPException(403, "Você não participa deste workspace.")
