@@ -63,6 +63,8 @@ def validate_ideas(payload, references, count):
 
 
 class OllamaGenerator:
+    version = "text-v2"
+
     def __init__(self, settings):
         self.settings = settings
         self.model_version = settings.ollama_model or "unconfigured"
@@ -80,7 +82,12 @@ class OllamaGenerator:
                 "metrics": {k: r.get(k) for k in ["views", "delta_views", "velocity"]},
                 "evidence": r.get("evidence", []),
                 "transcript": r.get("transcript"),
-                "visual": r.get("analise_visual"),
+                "visual": {
+                    key: value
+                    for key, value in (r.get("analise_visual") or {}).items()
+                    if key
+                    in {"state", "reason", "segments", "ocr", "cuts_ms", "model_version", "analyzer_version"}
+                },
             }
             for r in references
         ]

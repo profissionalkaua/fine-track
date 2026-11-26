@@ -9,6 +9,7 @@ from sqlalchemy import case, select, text
 from sqlalchemy.dialects.postgresql import insert
 
 from .adapters.media import MediaAnalyzer
+from .adapters.ollama import OllamaGenerator
 from .auth import Identity, database, require_editor
 from .brands import current_rules
 from .brands import describe as describe_rules
@@ -183,6 +184,7 @@ def freeze(db, body, auth, app):
                     "rules": describe_rules(rules),
                     "media": MediaAnalyzer(settings).cache_key(media.media_hash if media else None),
                     "text_model": settings.ollama_model,
+                    "text_analyzer": OllamaGenerator.version,
                     "provider": settings.ollama_url,
                 },
                 sort_keys=True,

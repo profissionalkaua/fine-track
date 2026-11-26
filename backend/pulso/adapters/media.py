@@ -48,7 +48,7 @@ class Frame(TypedDict):
 
 
 class MediaAnalyzer:
-    version = "media-v2"
+    version = "media-v3"
 
     def __init__(self, settings, media_root=None, temp_root=None):
         self.settings = settings
@@ -232,11 +232,24 @@ class MediaAnalyzer:
             return result
 
     def describe(self, frames, caption, duration_ms, pose, ocr):
+        segments = pose.get("segments", [])
+        pose_context = {
+            **pose,
+            "segments": (
+                segments
+                if len(segments) <= 8
+                else [segments[round(i * (len(segments) - 1) / 7)] for i in range(8)]
+            ),
+            "context_sampling": {
+                "source_segment_count": len(segments),
+                "strategy": "Até oito observações distribuídas no tempo, incluindo primeira e última. Não representa movimento contínuo.",
+            },
+        }
         prompt = {
             "duration_ms": duration_ms,
             "frame_timestamps_ms": [f["timestamp_ms"] for f in frames],
             "untrusted_caption": caption,
-            "pose_signals": pose,
+            "pose_signals": pose_context,
             "on_screen_text": ocr,
         }
         with httpx.Client(timeout=180, follow_redirects=False) as client:
