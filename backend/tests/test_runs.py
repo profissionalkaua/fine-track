@@ -1,6 +1,130 @@
 from conftest import AS_OF, observation
 
 
+def test_individual_lookup_recovers_active_run_beyond_recent_history(client, settings):
+    from datetime import timedelta
+
+    from pulso.admin import load_observations
+
+    load_observations(settings, [observation()], as_of=AS_OF)
+    video_id = "9000000000000000001"
+    created = client.post(
+        "/v1/runs",
+        json={"scope": "video", "video_id": video_id},
+        headers={"Idempotency-Key": "recover-individual"},
+    ).json()
+    client.app.state.clock = lambda: AS_OF + timedelta(minutes=1)
+    for i in range(21):
+        assert (
+            client.post(
+                "/v1/runs",
+                json={"scope": "feed"},
+                headers={"Idempotency-Key": f"later-feed-run-{i}"},
+            ).status_code
+            == 202
+        )
+    recent = client.get("/v1/runs").json()["items"]
+    assert created["id"] not in {run["id"] for run in recent}
+    response = client.get(f"/v1/runs/available?video_id={video_id}&rules_version=0")
+    assert response.status_code == 200
+    assert response.json()["run"]["id"] == created["id"]
+    assert response.json()["run"]["state"] == "queued"
+    assert client.get("/v1/runs").json()["items"] == recent
+
+
+def test_individual_lookup_reuses_completed_result_until_rules_or_model_change(client, settings):
+    from pulso.admin import load_observations
+    from pulso.jobs import drain_once
+
+    class Generator:
+        model_version = "test-only"
+
+        def generate(self, references, rules, count):
+            return generated(count)
+
+    client.app.state.generator = Generator()
+    load_observations(settings, [observation()], as_of=AS_OF)
+    body = {"scope": "video", "video_id": "9000000000000000001"}
+    created = client.post("/v1/runs", json=body, headers={"Idempotency-Key": "completed-lookup"}).json()
+    drain_once(client.app)
+    url = "/v1/runs/available?video_id=9000000000000000001"
+    assert client.get(url).json()["run"]["state"] == "completed"
+    assert client.get(url).json()["run"]["id"] == created["id"]
+    settings.ollama_model = "another-model"
+    assert client.get(url).json()["run"] is None
+    settings.ollama_model = ""
+    client.patch("/v1/brand-rules", json={"expected_version": 0, "category_text": "Fitness"})
+    assert client.get(url).json()["run"] is None
+    assert client.get(url + "&rules_version=0").status_code == 409
+
+
+def test_opening_same_individual_reuses_job_but_explicit_retry_creates_one(client, settings):
+    from concurrent.futures import ThreadPoolExecutor
+
+    from pulso.admin import load_observations, provision
+
+    load_observations(settings, [observation()], as_of=AS_OF)
+    body = {"scope": "video", "video_id": "9000000000000000001"}
+    first = client.post("/v1/runs/video/open", json=body, headers={"Idempotency-Key": "open-first-001"})
+    assert first.status_code == 202
+    second = client.post("/v1/runs/video/open", json=body, headers={"Idempotency-Key": "open-again-001"})
+    assert second.json()["id"] == first.json()["id"]
+    assert len(client.get("/v1/runs").json()["items"]) == 1
+    other = {"scope": "video", "video_id": "9000000000000000002"}
+    load_observations(settings, [observation(other["video_id"])], as_of=AS_OF)
+
+    def open_video(key):
+        return client.post("/v1/runs/video/open", json=other, headers={"Idempotency-Key": key})
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        simultaneous = list(pool.map(open_video, ["simultaneous-001", "simultaneous-002"]))
+    assert all(response.status_code == 202 for response in simultaneous)
+    assert simultaneous[0].json()["id"] == simultaneous[1].json()["id"]
+    assert (
+        client.post("/v1/runs", json=body, headers={"Idempotency-Key": "explicit-retry-001"}).json()["id"]
+        != first.json()["id"]
+    )
+    provision(settings, "another@example.test", "secure-another-password", "Another workspace")
+    login = client.post(
+        "/v1/auth/login", json={"email": "another@example.test", "password": "secure-another-password"}
+    )
+    client.headers["x-csrf-token"] = login.json()["csrf_token"]
+    assert client.get("/v1/runs/available?video_id=9000000000000000001").json()["run"] is None
+
+
+def test_individual_lookup_invalidates_changed_reference_and_supports_viewer(client, settings):
+    from pulso.admin import load_observations, provision
+
+    load_observations(settings, [observation()], as_of=AS_OF)
+    body = {"scope": "video", "video_id": "9000000000000000001"}
+    created = client.post("/v1/runs", json=body, headers={"Idempotency-Key": "viewer-reuse-001"}).json()
+    workspace_id = client.get("/v1/auth/me").json()["workspace"]["id"]
+    provision(
+        settings,
+        "viewer@example.test",
+        "secure-viewer-password",
+        "",
+        role="viewer",
+        workspace_id=workspace_id,
+    )
+    login = client.post(
+        "/v1/auth/login", json={"email": "viewer@example.test", "password": "secure-viewer-password"}
+    )
+    client.headers["x-csrf-token"] = login.json()["csrf_token"]
+    url = "/v1/runs/available?video_id=9000000000000000001"
+    assert client.get(url).json()["run"]["id"] == created["id"]
+    assert (
+        client.post(
+            "/v1/runs/video/open", json=body, headers={"Idempotency-Key": "viewer-open-denied"}
+        ).status_code
+        == 403
+    )
+    updated = observation()
+    updated["description"] = "Uma nova descrição da referência"
+    load_observations(settings, [updated], as_of=AS_OF)
+    assert client.get(url).json()["run"] is None
+
+
 def test_run_freezes_inputs_and_reuses_idempotency_key(client, settings):
     from pulso.admin import load_observations
 

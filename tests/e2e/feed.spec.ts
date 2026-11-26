@@ -117,11 +117,54 @@ test("janela individual tem duas abas, fecha com Escape e devolve foco", async (
   ).toBeVisible();
   await page.getByRole("tab", { name: "Análise visual" }).click();
   await expect(
-    page.getByText("Mídia autorizada não disponível", { exact: false }),
+    page.getByRole("tabpanel", { name: "Análise visual", exact: true }),
   ).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(open).toBeFocused();
+});
+
+test("reabrir vídeo recupera a execução disponível sem iniciar outra", async ({
+  page,
+}) => {
+  await page.getByLabel("País", { exact: true }).selectOption("BR");
+  const open = page
+    .locator("[data-video-card]")
+    .first()
+    .getByRole("button", { name: "Ideias e roteiros" });
+  const lookup = page.waitForResponse(
+    (response) =>
+      response.url().includes("/runs/available?") && response.status() === 200,
+  );
+  const opened = page
+    .waitForResponse(
+      (response) =>
+        response.url().endsWith("/runs/video/open") &&
+        response.status() === 202,
+    )
+    .catch(() => null);
+  await open.click();
+  const available = (await (await lookup).json()).run;
+  if (!available) {
+    expect(await opened).not.toBeNull();
+  }
+  await page.keyboard.press("Escape");
+  let creations = 0;
+  page.on("request", (request) => {
+    if (
+      request.method() === "POST" &&
+      /\/v1\/runs(?:\/video\/open)?$/.test(request.url())
+    )
+      creations++;
+  });
+  const recovered = page.waitForResponse(
+    (response) =>
+      response.url().includes("/runs/available?") && response.status() === 200,
+  );
+  await open.click();
+  expect((await (await recovered).json()).run).not.toBeNull();
+  await expect(page.getByRole("dialog")).toBeVisible();
+  expect(creations).toBe(0);
 });
 
 test("trocar workspace reinicia perfis e bloqueia rascunhos antigos durante a carga", async ({

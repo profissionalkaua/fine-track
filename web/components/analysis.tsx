@@ -679,64 +679,80 @@ export function IndividualIdeas({
   const [tab, setTab] = useState("script");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  async function start() {
-    if (!video) return;
-    setBusy(true);
-    setError("");
-    try {
-      setRun(
-        await api<AnalysisRun>("/runs", {
-          method: "POST",
-          headers: { "Idempotency-Key": crypto.randomUUID() },
-          body: JSON.stringify({
-            scope: "video",
-            video_id: video.id,
-            rules_version: brand.version,
-            country: filters.country,
-            period: filters.period,
-          }),
-        }),
-      );
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
+  const context = useRef<AbortController | null>(null);
+  const start = useCallback(
+    async (reuse = false) => {
+      if (!video) return;
+      const controller = context.current;
+      if (!controller || controller.signal.aborted) return;
+      setBusy(true);
+      setError("");
+      try {
+        const result = await api<AnalysisRun>(
+          reuse ? "/runs/video/open" : "/runs",
+          {
+            method: "POST",
+            signal: controller.signal,
+            headers: { "Idempotency-Key": crypto.randomUUID() },
+            body: JSON.stringify({
+              scope: "video",
+              video_id: video.id,
+              rules_version: brand.version,
+              country: filters.country,
+              period: filters.period,
+            }),
+          },
+        );
+        if (!controller.signal.aborted) setRun(result);
+      } catch (e) {
+        if (!controller.signal.aborted) setError((e as Error).message);
+      } finally {
+        if (!controller.signal.aborted) setBusy(false);
+      }
+    },
+    [video?.id, brand.version, filters.country, filters.period],
+  );
   useEffect(() => {
     setRun(null);
     setError("");
     setTab("script");
+    setBusy(false);
     if (!video) return;
     const controller = new AbortController();
-    api<{ items: AnalysisRun[] }>("/runs", { signal: controller.signal })
+    context.current = controller;
+    api<{ run: AnalysisRun | null }>(
+      `/runs/available?video_id=${encodeURIComponent(video.id)}&rules_version=${brand.version}`,
+      { signal: controller.signal },
+    )
       .then((r) => {
-        const cached = r.items.find(
-          (v) =>
-            v.scope === "video" &&
-            v.frozen.references[0]?.id === video.id &&
-            v.frozen.rules_version === brand.version &&
-            v.state === "completed",
-        );
-        if (cached) setRun(cached);
-        else if (editable) void start();
+        if (controller.signal.aborted) return;
+        if (r.run) setRun(r.run);
+        else if (editable) void start(true);
       })
       .catch((e) => {
-        if (e.name !== "AbortError") setError(e.message);
+        if (!controller.signal.aborted) setError(e.message);
       });
     return () => controller.abort();
-  }, [video?.id]);
+  }, [video?.id, brand.version, editable, start]);
   useEffect(() => {
     if (!video || !run || terminal.has(run.state)) return;
+    const controller = new AbortController();
     const timer = setInterval(
       () =>
-        api<AnalysisRun>(`/runs/${run.id}`)
-          .then(setRun)
-          .catch((e) => setError(e.message)),
+        api<AnalysisRun>(`/runs/${run.id}`, { signal: controller.signal })
+          .then((result) => {
+            if (!controller.signal.aborted) setRun(result);
+          })
+          .catch((e) => {
+            if (!controller.signal.aborted) setError(e.message);
+          }),
       1500,
     );
-    return () => clearInterval(timer);
-  }, [run?.id, run?.state, video?.id]);
+    return () => {
+      controller.abort();
+      clearInterval(timer);
+    };
+  }, [run?.id, run?.state, video?.id, brand.version]);
   const visual = run?.result?.analise_visual;
   return (
     <Modal

@@ -5,9 +5,10 @@ from typing import Annotated, Literal
 import pycountry
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import select
+from sqlalchemy import case, select, text
 from sqlalchemy.dialects.postgresql import insert
 
+from .adapters.media import MediaAnalyzer
 from .auth import Identity, database, require_editor
 from .brands import current_rules
 from .brands import describe as describe_rules
@@ -157,7 +158,7 @@ def freeze(db, body, auth, app):
                 else:
                     refs[item["id"]] = {**item, "origins": ["competitor"]}
             groups.append(group)
-    return {
+    frozen = {
         "country": body.country,
         "period": body.period,
         "category": category,
@@ -171,6 +172,32 @@ def freeze(db, body, auth, app):
         "captured_at": app.state.clock().isoformat(),
         "budget": {"feed": 20, "creators": 30},
     }
+    if body.scope == "video":
+        settings = app.state.settings
+        media = db.get(AuthorizedMedia, (auth[0].workspace_id, body.video_id))
+        frozen["individual_fingerprint"] = sha256(
+            json.dumps(
+                {
+                    "video_id": body.video_id,
+                    "references": list(refs.values()),
+                    "rules": describe_rules(rules),
+                    "media_hash": media.media_hash if media else None,
+                    "analysis": [
+                        settings.ollama_model,
+                        MediaAnalyzer.version,
+                        settings.vision_model,
+                        settings.vision_max_frames,
+                        settings.whisper_model_path,
+                        settings.pose_model_path,
+                        settings.ocr_executable,
+                        settings.ocr_languages,
+                    ],
+                },
+                sort_keys=True,
+                default=str,
+            ).encode()
+        ).hexdigest()
+    return frozen
 
 
 def create(db, body, auth, app, key, parent_id=None):
@@ -227,7 +254,11 @@ def create(db, body, auth, app, key, parent_id=None):
 
 @router.post("", status_code=202)
 def create_run(
-    body: RunRequest, auth: Identity, request: Request, idempotency_key: Key, db=Depends(database, scope="function")
+    body: RunRequest,
+    auth: Identity,
+    request: Request,
+    idempotency_key: Key,
+    db=Depends(database, scope="function"),
 ):
     return describe(create(db, body, auth, request.app, idempotency_key))
 
@@ -247,6 +278,65 @@ def preview(body: RunRequest, auth: Identity, request: Request, db=Depends(datab
         "model_configured": bool(request.app.state.settings.ollama_model),
         "collection_enabled": request.app.state.settings.collection_enabled,
     }
+
+
+@router.get("/available")
+def available_run(
+    video_id: str,
+    auth: Identity,
+    request: Request,
+    rules_version: int | None = None,
+    db=Depends(database, scope="function"),
+):
+    frozen = freeze(
+        db, RunRequest(scope="video", video_id=video_id, rules_version=rules_version), auth, request.app
+    )
+    run = available_individual(db, frozen)
+    return {"run": describe(run) if run else None}
+
+
+def available_individual(db, frozen):
+    return db.scalar(
+        select(Run)
+        .where(
+            Run.scope == "video",
+            Run.frozen["individual_fingerprint"].as_string() == frozen["individual_fingerprint"],
+        )
+        .order_by(
+            case(
+                (Run.state.in_(["queued", "collecting", "analyzing", "generating"]), 0),
+                (Run.state == "completed", 1),
+                else_=2,
+            ),
+            Run.created_at.desc(),
+            Run.id.desc(),
+        )
+        .limit(1)
+    )
+
+
+@router.post("/video/open", status_code=202)
+def open_individual(
+    body: RunRequest,
+    auth: Identity,
+    request: Request,
+    idempotency_key: Key,
+    db=Depends(database, scope="function"),
+):
+    require_editor(auth)
+    if body.scope != "video":
+        raise HTTPException(422, "Esta operação exige uma análise individual.")
+    frozen = freeze(db, body, auth, request.app)
+    lock_key = int.from_bytes(
+        sha256(f"{auth[0].workspace_id}:{frozen['individual_fingerprint']}".encode()).digest()[:8],
+        signed=True,
+    )
+    db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": lock_key})
+    previous = db.scalar(select(Run).where(Run.idempotency_key == idempotency_key))
+    if previous:
+        return describe(create(db, body, auth, request.app, idempotency_key))
+    available = available_individual(db, frozen)
+    return describe(available or create(db, body, auth, request.app, idempotency_key))
 
 
 @router.get("/{run_id}")
@@ -320,7 +410,8 @@ def signal_availability(prepared):
     return {
         "signal_availability": signals,
         "unavailable_signals": [
-            name for name in ("retention_analytics", "audio", "visual_frames")
+            name
+            for name in ("retention_analytics", "audio", "visual_frames")
             if not signals or any(not available[name] for available in signals.values())
         ],
     }
