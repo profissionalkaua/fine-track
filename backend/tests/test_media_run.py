@@ -51,3 +51,9 @@ def test_individual_run_uses_authorized_media_and_keeps_script_when_vision_is_mi
     assert result["result"]["analise_visual"]["duration_ms"] == 2000
     assert result["result"]["analise_visual"]["state"] == "partial"
     assert result["result"]["analise_visual"]["frames"][0]["timestamp_ms"] == 0
+    lookup = "/v1/runs/available?video_id=9000000000000000001"
+    assert client.get(lookup).json()["run"]["id"] == run_id
+    # A renewed authorization for changed bytes must not reuse the previous result.
+    video.write_bytes(video.read_bytes() + b"\0")
+    register_media(settings, workspace_id, "9000000000000000001", video, "synthetic-test-owned-v2")
+    assert client.get(lookup).json()["run"] is None

@@ -1,6 +1,11 @@
 from conftest import AS_OF, observation
 
 
+def test_individual_lookup_rejects_invalid_query_without_server_error(client):
+    for query in ["video_id=" + "9" * 33, "video_id=1&rules_version=-1"]:
+        assert client.get("/v1/runs/available?" + query).status_code == 422
+
+
 def test_individual_lookup_recovers_active_run_beyond_recent_history(client, settings):
     from datetime import timedelta
 
@@ -53,6 +58,12 @@ def test_individual_lookup_reuses_completed_result_until_rules_or_model_change(c
     settings.ollama_model = "another-model"
     assert client.get(url).json()["run"] is None
     settings.ollama_model = ""
+    settings.media_max_seconds += 30
+    assert client.get(url).json()["run"] is None
+    settings.media_max_seconds -= 30
+    settings.media_max_mb += 10
+    assert client.get(url).json()["run"] is None
+    settings.media_max_mb -= 10
     client.patch("/v1/brand-rules", json={"expected_version": 0, "category_text": "Fitness"})
     assert client.get(url).json()["run"] is None
     assert client.get(url + "&rules_version=0").status_code == 409

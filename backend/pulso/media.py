@@ -1,5 +1,4 @@
 import hashlib
-import json
 import subprocess
 
 from sqlalchemy import select
@@ -24,20 +23,7 @@ def analyze_authorized(app, workspace_id, reference):
         if media is None:
             return unavailable
         path, expected_hash = media.path, media.media_hash
-        cache_key = hashlib.sha256(
-            json.dumps(
-                [
-                    media.media_hash,
-                    analyzer.version,
-                    app.state.settings.vision_model,
-                    app.state.settings.vision_max_frames,
-                    app.state.settings.whisper_model_path,
-                    app.state.settings.pose_model_path,
-                    app.state.settings.ocr_executable,
-                    app.state.settings.ocr_languages,
-                ]
-            ).encode()
-        ).hexdigest()
+        cache_key = analyzer.cache_key(media.media_hash, reference["description"])
         try:
             file = analyzer.authorized_file(path)
             if hashlib.sha256(file.read_bytes()).hexdigest() != expected_hash:

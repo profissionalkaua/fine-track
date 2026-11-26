@@ -3,7 +3,7 @@ from hashlib import sha256
 from typing import Annotated, Literal
 
 import pycountry
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import case, select, text
 from sqlalchemy.dialects.postgresql import insert
@@ -181,17 +181,9 @@ def freeze(db, body, auth, app):
                     "video_id": body.video_id,
                     "references": list(refs.values()),
                     "rules": describe_rules(rules),
-                    "media_hash": media.media_hash if media else None,
-                    "analysis": [
-                        settings.ollama_model,
-                        MediaAnalyzer.version,
-                        settings.vision_model,
-                        settings.vision_max_frames,
-                        settings.whisper_model_path,
-                        settings.pose_model_path,
-                        settings.ocr_executable,
-                        settings.ocr_languages,
-                    ],
+                    "media": MediaAnalyzer(settings).cache_key(media.media_hash if media else None),
+                    "text_model": settings.ollama_model,
+                    "provider": settings.ollama_url,
                 },
                 sort_keys=True,
                 default=str,
@@ -282,10 +274,10 @@ def preview(body: RunRequest, auth: Identity, request: Request, db=Depends(datab
 
 @router.get("/available")
 def available_run(
-    video_id: str,
+    video_id: Annotated[str, Query(min_length=1, max_length=32)],
     auth: Identity,
     request: Request,
-    rules_version: int | None = None,
+    rules_version: Annotated[int | None, Query(ge=0)] = None,
     db=Depends(database, scope="function"),
 ):
     frozen = freeze(

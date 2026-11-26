@@ -55,6 +55,28 @@ class MediaAnalyzer:
         self.media_root = Path(media_root or settings.media_root).resolve()
         self.temp_root = Path(temp_root or settings.media_temp_root).resolve()
 
+    def cache_key(self, media_hash, caption=""):
+        settings = self.settings
+        return hashlib.sha256(
+            json.dumps(
+                [
+                    media_hash,
+                    caption,
+                    self.version,
+                    str(self.media_root),
+                    settings.ollama_url,
+                    settings.vision_model,
+                    settings.vision_max_frames,
+                    settings.whisper_model_path,
+                    settings.pose_model_path,
+                    settings.ocr_executable,
+                    settings.ocr_languages,
+                    settings.media_max_mb,
+                    settings.media_max_seconds,
+                ],
+            ).encode()
+        ).hexdigest()
+
     def authorized_file(self, path):
         path = Path(path).resolve()
         if not path.is_relative_to(self.media_root) or not path.is_file():
@@ -157,10 +179,14 @@ class MediaAnalyzer:
             }
             if self.settings.vision_model and frames:
                 limit = self.settings.vision_max_frames
-                selected = frames if len(frames) <= limit else (
-                    frames[:1] if limit == 1 else [
-                        frames[round(i * (len(frames) - 1) / (limit - 1))] for i in range(limit)
-                    ]
+                selected = (
+                    frames
+                    if len(frames) <= limit
+                    else (
+                        frames[:1]
+                        if limit == 1
+                        else [frames[round(i * (len(frames) - 1) / (limit - 1))] for i in range(limit)]
+                    )
                 )
                 result["vision_frame_timestamps_ms"] = [frame["timestamp_ms"] for frame in selected]
                 try:
@@ -181,18 +207,26 @@ class MediaAnalyzer:
                         segment.inferred_fields = sorted(
                             field for field in inferred if getattr(segment, field) is not None
                         )
-                        segment.observed_fields = list(dict.fromkeys(
-                            field for field in segment.observed_fields
-                            if field not in inferred and getattr(segment, field) is not None
-                        ))
+                        segment.observed_fields = list(
+                            dict.fromkeys(
+                                field
+                                for field in segment.observed_fields
+                                if field not in inferred and getattr(segment, field) is not None
+                            )
+                        )
                     usable_fields = ("movement", "scene", "lighting", "clothing", "people_count", "camera")
                     if any(
                         getattr(segment, field) is not None
-                        for segment in output.segments for field in usable_fields
+                        for segment in output.segments
+                        for field in usable_fields
                     ):
-                        result.update(state="completed", reason=None, segments=output.model_dump()["segments"])
+                        result.update(
+                            state="completed", reason=None, segments=output.model_dump()["segments"]
+                        )
                     else:
-                        result["reason"] = "Modelo retornou estrutura válida, mas sem sinais visuais utilizáveis."
+                        result["reason"] = (
+                            "Modelo retornou estrutura válida, mas sem sinais visuais utilizáveis."
+                        )
                 except (httpx.HTTPError, ValueError, KeyError):
                     result["reason"] = "O modelo de visão está indisponível ou retornou evidência inválida."
             return result
