@@ -1,0 +1,4 @@
+-c requirements.txt
+faster-whisper==1.2.1
+# 1.2.1 passes metadata_errors, removed by PyAV 19 (upstream issue #1589).
+av==18.1.0

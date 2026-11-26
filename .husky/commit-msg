@@ -1,0 +1,5 @@
+if [ -x node_modules/node/bin/node.exe ]; then
+  node_modules/node/bin/node.exe scripts/commitlint.mjs --edit "$1"
+else
+  node scripts/commitlint.mjs --edit "$1"
+fi
