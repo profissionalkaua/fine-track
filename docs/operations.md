@@ -1,5 +1,26 @@
 # Operação do piloto Pulso
 
+## Ambiente F2 isolado
+
+O coletor aceita `PULSO_F2_PYTHON_PATH`, apontando para o executável Python de um ambiente virtual com F2. A máquina do piloto foi preparada em `.runtime/probes/f2-venv`, a partir da revisão `f6be8c0ffba9a127075bbeafe4838716650b6325` do repositório `Johnserf-Seed/f2`. O campo de versão do pacote nessa revisão é `0.0.1.7`. A configuração local registra o caminho do interpretador.
+
+Para preparar uma instalação nova no Windows, execute da raiz do projeto os comandos abaixo. O F2 é executado em processo separado. As dependências da API continuam sendo instaladas pelo arquivo de requisitos da aplicação.
+
+```powershell
+git clone https://github.com/Johnserf-Seed/f2.git .runtime/sources/f2
+git -C .runtime/sources/f2 checkout f6be8c0ffba9a127075bbeafe4838716650b6325
+.venv/Scripts/python.exe -m venv .runtime/probes/f2-venv
+.runtime/probes/f2-venv/Scripts/python.exe -m pip install .runtime/sources/f2
+```
+
+Configure `PULSO_F2_PYTHON_PATH` com o caminho absoluto de `.runtime/probes/f2-venv/Scripts/python.exe`. Em Linux, use `bin/python` no ambiente correspondente. `PULSO_COLLECTION_ENABLED` continua sendo o controle explícito de coleta. `Settings.testing()` usa a configuração de teste isolada. Para avaliar a fonte manualmente, uma instância `Settings(collection_enabled=True)` habilita somente aquele processo.
+
+O processo recebe fonte, referência e quantidade por stdin. Consulta apenas caminhos fixos em `www.tiktok.com`, verifica DNS público e fixa o endereço na conexão direta com TLS ativo. Redirecionamentos são recusados. Um callback limita a resposta a 8 MB durante a transferência. Cada requisição tem timeout de 20 s e o processo inteiro tem timeout de 90 s. Recomendações, hashtags e criadores retornam até 50 itens da primeira página. O coletor usa uma recomendação pública para inicializar a sessão antes das consultas de perfil ou hashtag.
+
+HTTP 401/403 e exigência de login interrompem a coleta. HTTP 429 preserva a espera indicada por `Retry-After`, incluindo data HTTP. Uma falha de importação, timeout ou resposta inválida produz indisponibilidade pela interface existente. A procedência inclui `f2-public-web` e a versão F2. Parâmetros de região da requisição ficam fora da evidência geográfica. Os três vídeos da repetição chegaram sem país verificável.
+
+A pesquisa, a revisão instalada e os resultados observados estão em [Coletores TikTok no GitHub](research/github-tiktok-collectors.md). Estabilidade, paginação, cobertura BR, classificação humana e sete dias seguem como critérios de aceitação do piloto.
+
 ## Modelos locais nesta máquina
 
 Ollama portátil `0.40.18` está em `.runtime/ollama`, escutando somente em `127.0.0.1:11434`. Inicie novamente com `powershell -File scripts/ollama-local.ps1`. O launcher desativa a nuvem e limita a um modelo carregado e uma inferência simultânea. Não instala serviço nem altera drivers. ROCm não aceitou o driver AMD; o backend Vulkan da própria distribuição reconheceu a RX 6600 com 8 GB de VRAM. Medições iniciais usaram CPU; as avaliações finais dos modelos 4B usaram Vulkan na GPU.

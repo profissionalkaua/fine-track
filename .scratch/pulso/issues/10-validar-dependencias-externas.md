@@ -13,11 +13,13 @@ Status: ready-for-human
 - [x] Sondar TikTok-Api indicado no guia sem credenciais nem insistência após falha.
 - [x] Iniciar observação horária por até 168 horas, excluindo fixtures da cobertura real.
 - [x] Verificar recuperação da fila após encerramento forçado de broker e worker na CI ampliada.
-- [ ] Obter sessão válida da fonte e amostra autorizada para avaliação editorial/geográfica.
+- [x] Validar ambiente público de coleta e obter amostras reais para avaliação editorial/geográfica.
 - [ ] Medir sete dias reais de cobertura/latência e concluir calibração humana.
 - [ ] Inspecionar o frame original da Library ou sua exportação.
 
 ## Comments
+
+- Em 26/11, o F2 isolado passou nas três rotas pelo Collector do Pulso e no perfil público. O ticket 14 registra integração e revisão. As amostras continuaram sem país verificável, e a aceitação BR segue pendente.
 
 Continuidade: o usuário solicitou vídeos reais do TikTok. Três páginas/mídias públicas foram acessadas e processadas em workspaces de avaliação, com correção do excesso de contexto revelado pelo primeiro vídeo. Isso atende à obtenção de amostras reais, mas não valida sessão/rotas amplas nem geografia. Qualidade reprovada por erros de movimento, fala, OCR e edição. Consulte `docs/real-tiktok-evaluation.md` e ticket 12.
 

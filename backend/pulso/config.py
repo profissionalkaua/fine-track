@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     cookie_secure: bool = False
     session_hours: int = 24
     collection_enabled: bool = False
+    f2_python_path: str = ""
     ms_token: str | None = None
     broker_url: str = "amqp://guest:guest@127.0.0.1:5672//"
     ollama_url: str = "http://127.0.0.1:11434"
@@ -43,6 +44,7 @@ class Settings(BaseSettings):
             database_url=cls.model_fields["database_url"].default + "_test",
             admin_database_url=cls.model_fields["admin_database_url"].default + "_test",
             collection_enabled=False,
+            f2_python_path="",
             ollama_model="",
             vision_model="",
             classifier_model="",

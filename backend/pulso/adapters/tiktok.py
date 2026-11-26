@@ -1,9 +1,10 @@
 import asyncio
-import ipaddress
+import json
 import re
-import socket
+import subprocess
 from datetime import UTC, datetime
 from importlib.metadata import version
+from pathlib import Path
 from typing import Protocol
 from urllib.parse import urlsplit
 
@@ -11,6 +12,7 @@ import pycountry
 
 from ..db import now
 from ..feed import normalize
+from .public_network import safe_public_url
 
 
 class SourceError(Exception):
@@ -48,32 +50,6 @@ def parse_handle(value: str):
     if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.]{0,23}", value):
         raise ValueError("Usuário do TikTok inválido.")
     return value.lower()
-
-
-def safe_public_url(value: str, *, media=False):
-    url = urlsplit(value)
-    suffixes = (
-        "tiktok.com",
-        "tiktokcdn.com",
-        "tiktokcdn-us.com",
-        "ttwstatic.com",  # Bootstrap assets requested by the public TikTok page.
-        "byteoversea.com",
-        "ibytedtos.com",
-        "byteimg.com",
-    )
-    host = url.hostname or ""
-    if (
-        url.scheme != "https"
-        or url.username
-        or url.password
-        or url.port not in {None, 443}
-        or not any(host == suffix or host.endswith("." + suffix) for suffix in suffixes)
-    ):
-        raise ValueError("Destino externo não permitido.")
-    for result in socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM):
-        if not ipaddress.ip_address(result[4][0]).is_global:
-            raise ValueError("Endereço interno não permitido.")
-    return value
 
 
 def normalize_video(raw: dict, observed_at=None, source="tiktok-api", source_reference=None):
@@ -154,6 +130,8 @@ class TikTokCollector:
     async def _request(self, source, reference, count):
         if not self.settings.collection_enabled:
             raise SourceError("A coleta externa está desativada. Configure o acesso autorizado.")
+        if self.settings.f2_python_path:
+            return await asyncio.to_thread(self._f2_request, source, reference, count)
         try:
             from TikTokApi import TikTokApi
         except ImportError:
@@ -225,3 +203,65 @@ class TikTokCollector:
                 "blocked" if blocked else "rate_limited" if rate_limited else "unavailable",
                 300 if rate_limited else None,
             ) from None
+
+    def _f2_request(self, source, reference, count):
+        if source not in {"trending", "hashtag", "creator", "profile"}:
+            raise ValueError("Fonte desconhecida.")
+        if source in {"creator", "profile"}:
+            reference = parse_handle(reference)
+        if source == "hashtag" and (not reference or not re.fullmatch(r"[\w]{1,100}", reference)):
+            raise ValueError("Hashtag de descoberta inválida.")
+        try:
+            response = subprocess.run(
+                [self.settings.f2_python_path, "-m", "pulso.adapters.f2_guest"],
+                cwd=Path(__file__).resolve().parents[2],
+                input=json.dumps({"source": source, "reference": reference, "count": max(1, min(count, 50))}),
+                capture_output=True,
+                encoding="utf8",
+                errors="strict",
+                timeout=90,
+                check=True,
+            )
+            payload = json.loads(response.stdout)
+            if not isinstance(payload, dict):
+                raise ValueError("Envelope inválido.")
+            if payload.get("error") in {"blocked", "rate_limited", "unavailable"}:
+                kind = payload["error"]
+                raise SourceError(
+                    "A fonte não respondeu à coleta.",
+                    kind,
+                    payload.get("retry_after", 300) if kind == "rate_limited" else None,
+                )
+            if source == "profile":
+                user = payload["data"]["userInfo"]["user"]
+                return {
+                    "id": str(user["id"]),
+                    "handle": parse_handle(user["uniqueId"]),
+                    "name": str(user.get("nickname") or user["uniqueId"]),
+                    "available": not bool(user.get("privateAccount")),
+                    "adapter_version": "f2:" + payload["version"],
+                }
+            if not isinstance(payload["data"], list):
+                raise ValueError("Formato de resposta inválido.")
+            records = []
+            for raw in payload["data"][:count]:
+                if not isinstance(raw, dict):
+                    raise ValueError("Vídeo inválido.")
+                record = normalize_video(
+                    raw, source="f2-public-web", source_reference=f"{source}:{reference or ''}"
+                )
+                record["geo_evidence"]["library_version"] = "f2:" + payload["version"]
+                records.append(record)
+            return records
+        except SourceError:
+            raise
+        except (
+            OSError,
+            subprocess.SubprocessError,
+            UnicodeError,
+            ValueError,
+            KeyError,
+            TypeError,
+            AttributeError,
+        ):
+            raise SourceError("Ambiente F2 indisponível ou resposta inválida.") from None

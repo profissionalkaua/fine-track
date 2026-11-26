@@ -29,6 +29,8 @@ Os três arquivos locais `.runtime/pilot/metrics-*.prom` não continham contagen
 
 ## Condições para iniciar os sete dias
 
+A investigação posterior encontrou um caminho funcional no F2. A integração isolada foi exercitada pelo Collector do Pulso e persistiu um vídeo de recomendações, um de hashtag e um de criador. O perfil público também respondeu. As três observações retornaram país desconhecido. O acesso técnico a essas rotas avançou, enquanto a cobertura estrita BR continua sem elegíveis. Consulte [a pesquisa e a integração](github-tiktok-collectors.md).
+
 Às 17h28 de Brasília em 26/11, o observador foi reiniciado por 168 horas com os serviços locais ativos. A primeira amostra consultou PostgreSQL e métricas sem erro, manteve `preflight_source_disabled` e encontrou zero elegíveis reais em BR nas três janelas. O processo depende da máquina ligada. Essa observação documenta o estado atual e a janela de aceitação aguarda fonte e histórico válidos.
 
 1. O responsável pelo acesso precisa indicar um ambiente ou sessão autorizados em que as três rotas devolvam exemplares reais. Se a sessão exigir um segredo, o operador o configura localmente. O teste de aceitação das rotas deve registrar quantidade, versão, procedência e evidência de país para cada superfície. Os requisitos do produto pedem confirmação dos usos previstos antes da coleta em produção. [Guia do produto](../../saas-inteligencia-viral-tiktok.md), [documentação do mantenedor](https://github.com/davidteather/TikTok-Api)
