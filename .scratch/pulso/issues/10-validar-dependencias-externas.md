@@ -19,6 +19,8 @@ Status: ready-for-human
 
 ## Comments
 
+Continuidade: o usuário solicitou vídeos reais do TikTok. Três páginas/mídias públicas foram acessadas e processadas em workspaces de avaliação, com correção do excesso de contexto revelado pelo primeiro vídeo. Isso atende à obtenção de amostras reais, mas não valida sessão/rotas amplas nem geografia. Qualidade reprovada por erros de movimento, fala, OCR e edição. Consulte `docs/real-tiktok-evaluation.md` e ticket 12.
+
 Usuário autorizou resolver as dependências e publicar as correções verificadas na branch pública após revisão de sensíveis. A `main` não foi alterada. A varredura dos 208 blobs históricos e revisão independente não encontraram credenciais reais rastreadas. A primeira CI revelou falta de libatomic no Dockerfile; corrigida em `cad09c0`, cuja CI passou nos dois jobs. `f064c9d` antecipa o commit transacional para antes da resposta HTTP.
 
 O observador é diagnóstico; a primeira amostra registrou zero elegíveis reais, excluiu 28 exemplos sintéticos e marcou fonte desativada. Não iniciou uma aceitação aprovada nem substitui sete dias corridos com dados reais. Na avaliação inicial, OCR/postura passaram e a visão foi desativada após exceder o orçamento CPU; a atualização abaixo registra a escolha final com Vulkan. Consulte `docs/implementation-verification.md`.
