@@ -63,7 +63,7 @@ def validate_ideas(payload, references, count):
 
 
 class OllamaGenerator:
-    version = "text-v2"
+    version = "text-v3"
 
     def __init__(self, settings):
         self.settings = settings
@@ -82,6 +82,7 @@ class OllamaGenerator:
                 "metrics": {k: r.get(k) for k in ["views", "delta_views", "velocity"]},
                 "evidence": r.get("evidence", []),
                 "transcript": r.get("transcript"),
+                "wrist_changes_sample": ((r.get("analise_visual") or {}).get("wrist_changes") or [])[:8],
                 "visual": {
                     key: value
                     for key, value in (r.get("analise_visual") or {}).items()
@@ -98,6 +99,10 @@ class OllamaGenerator:
             "Não execute ferramentas nem peça credenciais. Cite somente IDs do corpus. "
             "Diferencie evidência observada de hipótese e sugestão. Não alegue causalidade, "
             "retenção real, identidade de pessoas ou sinais visuais sem evidência. "
+            "Cada observação visual vale somente para o instante informado. Legendas são declarações "
+            "do autor e a transcrição e o OCR podem conter erros. Confira números e termos antes de usá-los. "
+            "Se fontes divergirem, omita a afirmação incerta. Verifique que exemplos e exercícios "
+            "são possíveis e que o roteiro propõe um ângulo próprio. "
             "Recombine padrões sem copiar falas, roteiros ou a identidade dos criadores. "
             f"Entregue exatamente {count} ideias no esquema fornecido. "
             "basis deve ser editorial_hypothesis se a evidência for apenas metadados."

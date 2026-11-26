@@ -1,7 +1,9 @@
 """Optional offline audio, text and pose extractors. Each reports its own absence."""
 
+import csv
 import shutil
 import subprocess
+from bisect import bisect_right
 from pathlib import Path
 
 
@@ -42,14 +44,21 @@ def extract_text(frames, executable="", language="por+eng"):
     for frame in frames:
         try:
             result = subprocess.run(
-                [executable, str(frame["path"]), "stdout", "-l", language, "--psm", "11"],
+                [executable, str(frame["path"]), "stdout", "-l", language, "--psm", "11", "tsv"],
                 capture_output=True,
                 timeout=20,
                 check=True,
                 encoding="utf8",
                 errors="replace",
             )
-            text = result.stdout.strip()[:5000]
+            words = csv.DictReader(result.stdout.splitlines(), delimiter="\t", quoting=csv.QUOTE_NONE)
+            text = " ".join(
+                word["text"].strip()
+                for word in words
+                if word["level"] == "5"
+                and float(word["conf"]) >= 85
+                and any(c.isalnum() for c in word["text"])
+            )[:5000]
             if text:
                 segments.append({"timestamp_ms": frame["timestamp_ms"], "text": text})
         except (subprocess.SubprocessError, OSError):
@@ -116,8 +125,35 @@ def estimate_pose(path: Path, model_path: str, duration_ms: int):
         if not sampled_frames:
             return {"state": "unavailable", "reason": "Nenhum quadro pôde ser decodificado.", "segments": []}
         return {
-            "state": "completed", "model": Path(model_path).name,
-            "sampled_frames": sampled_frames, "segments": segments,
+            "state": "completed",
+            "model": Path(model_path).name,
+            "sampled_frames": sampled_frames,
+            "segments": segments,
         }
     except (ImportError, RuntimeError, ValueError, OSError):
         return {"state": "unavailable", "reason": "Análise de postura indisponível.", "segments": []}
+
+
+def wrist_changes(segments, cut_times):
+    """Compare visible wrists in adjacent single-person samples within one shot."""
+    events = []
+    for before, after in zip(segments, segments[1:], strict=False):
+        start, end = before["start_ms"], after["start_ms"]
+        if (
+            end - start != 250
+            or min(before["confidence"], after["confidence"]) < 0.8
+            or before["people_detected"] != 1
+            or after["people_detected"] != 1
+            or bisect_right(cut_times, start) != bisect_right(cut_times, end)
+            or before["raised_wrists"] == after["raised_wrists"]
+        ):
+            continue
+        events.append(
+            {
+                "start_ms": start,
+                "end_ms": end,
+                "raised_before": before["raised_wrists"],
+                "raised_after": after["raised_wrists"],
+            }
+        )
+    return events

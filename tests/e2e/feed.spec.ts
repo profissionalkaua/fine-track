@@ -124,6 +124,70 @@ test("janela individual tem duas abas, fecha com Escape e devolve foco", async (
   await expect(open).toBeFocused();
 });
 
+test("análise visual mostra variação medida mesmo sem descrições de quadros", async ({
+  page,
+}) => {
+  await page.route("**/api/v1/runs/available?**", async (route) => {
+    const url = new URL(route.request().url());
+    const preview = await route.fetch({
+      url: `${url.origin}/api/v1/runs/preview`,
+      method: "POST",
+      data: {
+        scope: "video",
+        video_id: url.searchParams.get("video_id"),
+        rules_version: Number(url.searchParams.get("rules_version")),
+      },
+    });
+    expect(preview.ok()).toBeTruthy();
+    const { frozen } = await preview.json();
+    await route.fulfill({
+      json: {
+        run: {
+          id: "temporal-evidence-without-vision",
+          scope: "video",
+          state: "partial",
+          progress: 100,
+          processed: 1,
+          frozen,
+          created_at: frozen.captured_at,
+          errors: [],
+          result: {
+            ideas: [],
+            evidence: [],
+            analise_visual: {
+              state: "partial",
+              reason: "Modelo de visão local não configurado.",
+              segments: [],
+              frame_changes: [
+                { start_ms: 0, end_ms: 250, mean_luma_delta: 17.3 },
+              ],
+            },
+          },
+        },
+      },
+    });
+  });
+  await page
+    .locator("[data-video-card]")
+    .first()
+    .getByRole("button", { name: "Ideias e roteiros" })
+    .click();
+  await page.getByRole("tab", { name: "Análise visual" }).click();
+  const panel = page.getByRole("tabpanel", {
+    name: "Análise visual",
+    exact: true,
+  });
+  await expect(
+    panel.getByText("Modelo de visão local não configurado."),
+  ).toBeVisible();
+  await expect(panel.getByText(/Variação de brilho medida/)).toContainText(
+    "17.3",
+  );
+  await expect(
+    panel.getByRole("heading", { name: "Análise visual indisponível" }),
+  ).toHaveCount(0);
+});
+
 test("reabrir vídeo recupera a execução disponível sem iniciar outra", async ({
   page,
 }) => {

@@ -45,43 +45,16 @@ def test_text_generation_accepts_dense_pose_evidence_within_provider_context(mon
     assert len(reference["analise_visual"]["pose"]["segments"]) == 516
 
 
-def test_vision_accepts_dense_pose_evidence_without_losing_temporal_extent(monkeypatch, settings, tmp_path):
+def test_still_provider_receives_one_image_and_only_its_timestamp(monkeypatch, settings, tmp_path):
     from pulso.adapters.media import MediaAnalyzer
 
     def provider(request):
-        prompt = json.loads(json.loads(request.content)["messages"][-1]["content"])
-        if len(json.dumps(prompt)) > 16000:
-            return httpx.Response(400, json={"error": "request exceeds available context size"})
-        segments = prompt["pose_signals"]["segments"]
-        assert segments[0]["start_ms"] == 0
-        assert segments[-1]["end_ms"] == 129000
+        message = json.loads(request.content)["messages"][-1]
+        assert len(message["images"]) == 1
+        assert json.loads(message["content"]) == {"start_ms": 1750, "end_ms": 1751}
         return httpx.Response(200, json={"message": {"content": json.dumps({"segments": []})}})
 
     monkeypatch.setattr(httpx, "Client", partial(httpx.Client, transport=httpx.MockTransport(provider)))
-    pose = {
-        "state": "completed",
-        "sampled_frames": 516,
-        "segments": [
-            {
-                "start_ms": i * 250,
-                "end_ms": (i + 1) * 250,
-                "people_detected": 1,
-                "confidence": 0.8,
-                "raised_wrists": 1,
-                "limitations": "Estimativa de postura; cortes e oclusões reduzem a confiança.",
-            }
-            for i in range(516)
-        ],
-    }
     frame = tmp_path / "frame.jpg"
     frame.write_bytes(b"external-provider-fixture")
-    settings.vision_model = "external-fixture"
-    result = MediaAnalyzer(settings).describe(
-        [{"path": frame, "timestamp_ms": 0}],
-        "Explicação educativa",
-        129000,
-        pose,
-        {"segments": []},
-    )
-    assert result.segments == []
-    assert len(pose["segments"]) == 516
+    assert MediaAnalyzer(settings).describe_frame({"path": frame, "timestamp_ms": 1750}).segments == []

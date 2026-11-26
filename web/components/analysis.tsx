@@ -34,6 +34,17 @@ type Idea = {
 type Visual = {
   state: string;
   reason?: string;
+  frame_changes?: {
+    start_ms: number;
+    end_ms: number;
+    mean_luma_delta: number;
+  }[];
+  wrist_changes?: {
+    start_ms: number;
+    end_ms: number;
+    raised_before: number;
+    raised_after: number;
+  }[];
   segments?: {
     start_ms: number;
     end_ms: number;
@@ -836,13 +847,45 @@ export function IndividualIdeas({
               )}
             </div>
           )
-        ) : visual?.state === "completed" ? (
+        ) : visual &&
+          (visual.segments?.length ||
+            visual.frame_changes?.length ||
+            visual.wrist_changes?.length) ? (
           <div className="visual-segments">
+            {visual.reason && <p>{visual.reason}</p>}
+            {!!visual.wrist_changes?.length && (
+              <details>
+                <summary>
+                  Mudanças de postura estimadas ({visual.wrist_changes.length})
+                </summary>
+                <ul>
+                  {visual.wrist_changes.map((v) => (
+                    <li key={v.start_ms}>
+                      {(v.start_ms / 1000).toFixed(2)}–
+                      {(v.end_ms / 1000).toFixed(2)} s · Punhos acima dos
+                      ombros: {v.raised_before} → {v.raised_after}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            {!!visual.frame_changes?.length && (
+              <p>
+                Variação de brilho medida a cada 0,25 s. A maior diferença média
+                foi{" "}
+                {Math.max(
+                  ...visual.frame_changes.map((v) => v.mean_luma_delta),
+                ).toFixed(1)}{" "}
+                em uma escala de 0 a 255. Cortes, luz e movimento influenciam a
+                medida.
+              </p>
+            )}
             {visual.segments?.map((s, i) => (
               <article key={i}>
                 <strong>
-                  {(s.start_ms / 1000).toFixed(1)}s —{" "}
-                  {(s.end_ms / 1000).toFixed(1)}s
+                  {visual.frame_changes
+                    ? `Quadro em ${(s.start_ms / 1000).toFixed(2)} s`
+                    : `${(s.start_ms / 1000).toFixed(1)}s — ${(s.end_ms / 1000).toFixed(1)}s`}
                 </strong>
                 <dl>
                   {[
@@ -864,7 +907,8 @@ export function IndividualIdeas({
                   ))}
                 </dl>
                 <small>
-                  Confiança: {Math.round((s.confidence || 0) * 100)}%
+                  Estimativa do modelo de{" "}
+                  {Math.round((s.confidence || 0) * 100)}% (sem calibração)
                 </small>
               </article>
             ))}
